@@ -105,3 +105,62 @@
   - Thực hiện `git commit --amend --author="Zerolexs <tienbaoluu@gmail.com>"` giữ nguyên commit message `"bảo"`.
   - Force push cập nhật branch `main` lên repository: `https://github.com/nonyx1og/campus-marketplace`.
 
+---
+
+## Sprint 03 - Domain Types, Theme System & Design System Primitives
+
+- **Thời gian**: 2026-10-25
+- **Vai trò**: Senior Mobile Architect / Design System Engineer
+- **Mục tiêu**: Xây dựng tầng domain dùng chung cho Campus Marketplace và bộ UI primitives chuẩn accessibility, không làm UI nghiệp vụ mới.
+
+### 1. User Prompt (Yêu cầu đầu vào)
+> "Domain types, theme và design system
+> Hãy xây dựng lớp domain dùng chung cho Campus Marketplace, không làm UI nghiệp vụ mới.
+> Tạo TypeScript types cho:
+> - User: id, name, role với buyer/seller/admin nếu cần.
+> - Listing: id, sellerId, title, category, priceMinor, stock, photoUri, createdAt, updatedAt.
+> - CartItem: listingId, quantity.
+> - Category, DeliveryRule, CheckoutSummary.
+> - API error và các trạng thái query cần thiết.
+> Tạo constants/theme.ts làm nguồn duy nhất cho light/dark tokens: background, surface, text, mutedText, primary, danger, border, success và spacing/radius/typography nếu cần.
+> Tạo các primitive có thể tái dùng: ScreenState, AppText, AppButton, AppInput, EmptyState, ErrorState, LoadingState.
+> Yêu cầu:
+> - Không có hex color ngoài theme token file.
+> - Contrast body text đạt ít nhất 4.5:1 trong cả hai theme.
+> - Button/input/icon control có accessibilityRole và accessibilityLabel.
+> - Touch target tối thiểu 44x44.
+> - TypeScript không dùng any tuỳ tiện.
+> Chạy `npx tsc --noEmit` và báo rõ mọi lỗi còn lại."
+
+---
+
+### 2. Phần code đã nhận (Accepted Code)
+1. **Domain Models (`types/domain.ts`, `types/index.ts`)**:
+   - `User`: `id`, `name`, `role` (`'buyer' | 'seller' | 'admin'`), kèm backward compatibility fields (`email`, `fullName`, `studentId`, `avatarUrl`).
+   - `Listing`: `id`, `sellerId`, `title`, `category`, `priceMinor` (VND integer), `stock`, `photoUri`, `createdAt`, `updatedAt`.
+   - `CartItem`: `listingId`, `quantity`.
+   - `Category`, `DeliveryRule` (phí giao dịch integer `feeMinor`, phương thức hẹn nhận khuôn viên `method`), `CheckoutSummary`.
+   - `ApiError`, `QueryStatus`, `ScreenViewState`, `QueryState<TData, TError>`, `ApiResponse<TData>`, `PaginatedResponse<TItem>`.
+2. **Single Source of Truth Theme (`constants/theme.ts`)**:
+   - Token light/dark: `background`, `surface`, `text`, `mutedText`, `primary`, `danger`, `border`, `success`, `spacing`, `radius`, `typography`, `layout` (`minTouchTarget: 44`).
+   - Đạt chuẩn WCAG AA: Contrast ratio body text >= 4.5:1 trong cả hai theme (Text on surface: Light = 17.85:1, Dark = 15.94:1; Muted on surface: Light = 7.58:1, Dark = 6.50:1).
+   - Theme context & hooks: `useTheme()`, `ThemeProvider`, `useThemeContext()`.
+   - Re-export `constants/tokens.ts` loại bỏ 100% mã hex lặp lại, chỉ tham chiếu từ `theme.ts`.
+3. **Bộ Primitives tái dùng (`components/primitives/`)**:
+   - `AppText`: Hỗ trợ variants (`heading`, `title`, `subheading`, `body`, `caption`, `label`, `muted`), `accessibilityRole="text" | "header"`, tự động áp dụng token màu và độ tương phản chuẩn.
+   - `AppButton`: Touch target tối thiểu 44x44, `accessibilityRole="button"`, `accessibilityLabel`, trạng thái `busy`/`disabled`, 5 variants (`primary`, `secondary`, `outline`, `danger`, `ghost`).
+   - `AppInput`: Input container tối thiểu 44px, nút icon clear/mật khẩu có touch target tối thiểu 44x44, `accessibilityRole="button"`, `accessibilityLabel` rõ ràng, hỗ trợ `error` và `helperText`.
+   - `LoadingState`: Indicator thông báo trạng thái `accessibilityRole="alert"`, `accessibilityLiveRegion="polite"`.
+   - `ErrorState`: Alert lỗi chuẩn a11y kèm nút Retry touch target tối thiểu 44x44.
+   - `EmptyState`: Trạng thái danh sách trống chuẩn a11y (`accessibilityRole="summary"`) kèm action button.
+   - `ScreenState`: Container điều phối linh hoạt 4 trạng thái, tích hợp Review State Switcher (touch target 44x44) phục vụ chấm điểm/kiểm thử.
+4. **Kiểm tra tự động**:
+   - Thêm script `npm run audit:theme` kiểm tra tự động mã hex và độ tương phản màu WCAG AA.
+
+---
+
+### 3. Kết quả kiểm tra tự động
+- `npm run audit:theme`: **PASSED** (0 mã hex ngoài `constants/theme.ts`, 23/23 cặp màu đạt chuẩn contrast >= 4.5:1).
+- `npx tsc --noEmit`: **PASSED** (0 lỗi, strict mode hoàn toàn sạch).
+
+

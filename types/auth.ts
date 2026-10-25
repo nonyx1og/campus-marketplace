@@ -1,10 +1,6 @@
-export interface User {
-  id: string;
-  email: string;
-  fullName: string;
-  studentId?: string;
-  avatarUrl?: string;
-}
+import { User, UserRole } from './domain';
+
+export type { User, UserRole };
 
 export interface AuthState {
   user: User | null;

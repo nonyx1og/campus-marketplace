@@ -1,95 +1,64 @@
 /**
- * Design tokens for Campus Marketplace.
- * RULE: All colors, typography, spacing, and touch target sizes must be defined here.
- * Never hardcode hex values outside of this file.
+ * Backward-compatible tokens re-export.
+ * RULE: All tokens are defined in constants/theme.ts (the single source of truth).
+ * No raw hex values exist in this file.
  */
+
+import {
+  lightTokens,
+  darkTokens,
+  spacing,
+  radius,
+  typography,
+  layout,
+  themeTokens,
+  useTheme,
+  ThemeProvider,
+} from './theme';
 
 export const Colors = {
   // Brand colors
-  primary: '#1D4ED8', // Campus Royal Blue
-  primaryDark: '#1E40AF',
-  primaryLight: '#DBEAFE',
-  primaryMuted: '#93C5FD',
+  primary: lightTokens.primary,
+  primaryDark: lightTokens.primaryBg,
+  primaryLight: lightTokens.primaryBgMuted,
+  primaryMuted: lightTokens.primaryBgMuted,
 
   // Secondary & Accents
-  accent: '#F59E0B', // Amber
-  accentLight: '#FEF3C7',
+  accent: lightTokens.warning,
+  accentLight: lightTokens.warningBgMuted,
 
   // Semantic Feedback
-  success: '#15803D',
-  successLight: '#DCFCE7',
-  warning: '#B45309',
-  warningLight: '#FEF3C7',
-  error: '#DC2626',
-  errorLight: '#FEE2E2',
+  success: lightTokens.success,
+  successLight: lightTokens.successBgMuted,
+  warning: lightTokens.warning,
+  warningLight: lightTokens.warningBgMuted,
+  error: lightTokens.danger,
+  errorLight: lightTokens.dangerBgMuted,
 
   // Neutrals & Surfaces
-  background: '#F8FAFC',
-  surface: '#FFFFFF',
-  surfaceSubtle: '#F1F5F9',
-  surfaceActive: '#E2E8F0',
+  background: lightTokens.background,
+  surface: lightTokens.surface,
+  surfaceSubtle: lightTokens.surfaceSubtle,
+  surfaceActive: lightTokens.surfaceActive,
 
   // Typography
-  textPrimary: '#0F172A',
-  textSecondary: '#475569',
-  textMuted: '#94A3B8',
-  textInverse: '#FFFFFF',
+  textPrimary: lightTokens.text,
+  textSecondary: lightTokens.mutedText,
+  textMuted: lightTokens.mutedText,
+  textInverse: lightTokens.textInverse,
 
   // Borders & Dividers
-  borderSubtle: '#E2E8F0',
-  borderStrong: '#CBD5E1',
+  borderSubtle: lightTokens.borderSubtle,
+  borderStrong: lightTokens.borderStrong,
 
   // Interactive
-  touchHighlight: 'rgba(29, 78, 216, 0.1)',
+  touchHighlight: lightTokens.touchHighlight,
 } as const;
 
-export const Spacing = {
-  xxs: 4,
-  xs: 8,
-  sm: 12,
-  md: 16,
-  lg: 20,
-  xl: 24,
-  xxl: 32,
-  screenPadding: 16,
-} as const;
-
-export const Typography = {
-  fontSizes: {
-    xs: 12,
-    sm: 14,
-    md: 16,
-    lg: 18,
-    xl: 22,
-    xxl: 28,
-  },
-  lineHeights: {
-    xs: 16,
-    sm: 20,
-    md: 24,
-    lg: 26,
-    xl: 30,
-    xxl: 36,
-  },
-  fontWeights: {
-    regular: '400' as const,
-    medium: '500' as const,
-    semibold: '600' as const,
-    bold: '700' as const,
-  },
-} as const;
-
-export const BorderRadius = {
-  xs: 4,
-  sm: 8,
-  md: 12,
-  lg: 16,
-  pill: 9999,
-} as const;
-
-export const Layout = {
-  minTouchTarget: 44, // Minimum 44x44 touch target size required for accessibility
-} as const;
+export const Spacing = spacing;
+export const Typography = typography;
+export const BorderRadius = radius;
+export const Layout = layout;
 
 export const Tokens = {
   colors: Colors,
@@ -97,6 +66,9 @@ export const Tokens = {
   typography: Typography,
   borderRadius: BorderRadius,
   layout: Layout,
+  light: lightTokens,
+  dark: darkTokens,
 } as const;
 
+export { useTheme, ThemeProvider, themeTokens };
 export default Tokens;

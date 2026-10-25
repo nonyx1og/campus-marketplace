@@ -1,9 +1,11 @@
 import { create } from 'zustand';
 import { ListingItem } from '@/types/listing';
+import { CartItem as DomainCartItem } from '@/types/domain';
 
-export interface CartItem {
-  listing: ListingItem;
+export interface CartItem extends DomainCartItem {
+  listingId: string;
   quantity: number;
+  listing: ListingItem;
 }
 
 export interface CartState {
@@ -17,19 +19,19 @@ export const useCartStore = create<CartState>((set) => ({
   items: [],
   addToCart: (item) =>
     set((state) => {
-      const existing = state.items.find((i) => i.listing.id === item.id);
+      const existing = state.items.find((i) => i.listingId === item.id || i.listing.id === item.id);
       if (existing) {
         return {
           items: state.items.map((i) =>
-            i.listing.id === item.id ? { ...i, quantity: i.quantity + 1 } : i
+            (i.listingId === item.id || i.listing.id === item.id) ? { ...i, quantity: i.quantity + 1 } : i
           ),
         };
       }
-      return { items: [...state.items, { listing: item, quantity: 1 }] };
+      return { items: [...state.items, { listingId: item.id, listing: item, quantity: 1 }] };
     }),
   removeFromCart: (listingId) =>
     set((state) => ({
-      items: state.items.filter((i) => i.listing.id !== listingId),
+      items: state.items.filter((i) => i.listingId !== listingId && i.listing.id !== listingId),
     })),
   clearCart: () => set({ items: [] }),
 }));

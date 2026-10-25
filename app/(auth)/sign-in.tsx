@@ -41,8 +41,10 @@ export default function SignInScreen() {
       const mockToken = `sec_token_${Date.now()}`;
       await signIn(mockToken, {
         id: 'usr_student_01',
-        email: email.trim(),
+        name: 'Nguyễn Văn Sinh Viên',
         fullName: 'Nguyễn Văn Sinh Viên',
+        role: 'buyer',
+        email: email.trim(),
         studentId: 'SV2024001',
       });
       // Navigation will be handled automatically by RootLayout route protection
