@@ -9,11 +9,14 @@
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "audit:theme": "node scripts/audit-domain-theme.js",
-    "test": "node scripts/test-auth-session.js",
+    "test:auth": "node scripts/test-auth-session.js",
+    "test:catalogue": "node scripts/test-catalogue-flow.js",
+    "test": "npm run test:auth && npm run test:catalogue",
     "check:all": "npm run typecheck && npm run audit:theme && npm run test"
   },
   "dependencies": {
     "@expo/vector-icons": "^14.0.0",
+    "@react-native-async-storage/async-storage": "2.2.0",
     "@tanstack/react-query": "^5.67.1",
     "expo": "~58.0.19",
     "expo-constants": "~58.0.13",
@@ -29,6 +32,8 @@
   },
   "devDependencies": {
     "@types/react": "~19.3.0",
+    "eslint": "^9.0.0",
+    "eslint-config-expo": "~58.0.4",
     "tsx": "^4.23.15",
     "typescript": "~6.0.3"
   },

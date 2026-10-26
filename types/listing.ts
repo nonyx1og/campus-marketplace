@@ -44,3 +44,25 @@ export function toDomainListing(item: ListingItem): Listing {
     imageUrl: item.imageUrl,
   };
 }
+
+/**
+ * Cache payload stored in local persistence.
+ */
+export interface CatalogueCachePayload {
+  items: ListingItem[];
+  lastUpdated: string; // ISO 8601 timestamp
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+/**
+ * Query parameters for catalogue requests.
+ */
+export interface CatalogueQueryParams {
+  page?: number;
+  limit?: number;
+  category?: string;
+  search?: string;
+}
+
