@@ -300,29 +300,31 @@ export async function uploadListingImage(compressedUri: string): Promise<string>
   }
 
   if (isRemoteApiConfigured()) {
-    try {
-      const formData = new FormData();
-      formData.append('file', {
-        uri: compressedUri,
-        type: 'image/jpeg',
-        name: `listing-${Date.now()}.jpg`,
-      } as unknown as Blob);
+    const formData = new FormData();
+    formData.append('file', {
+      uri: compressedUri,
+      type: 'image/jpeg',
+      name: `listing-${Date.now()}.jpg`,
+    } as unknown as Blob);
 
-      const response = await apiClient.post<{ url: string }>('/storage/upload', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-      if (response && response.url) {
-        return response.url;
-      }
-    } catch (error) {
-      if (!apiConfig.isMockFallbackEnabled) {
-        throw error;
-      }
+    // Content-Type is intentionally not set here: fetch adds multipart/form-data with its boundary.
+    // When a real API is configured, upload errors are NOT swallowed by the mock fallback.
+    // Otherwise the listing would be saved with a device-local file URI while the UI reports success.
+    const response = await apiClient.post<{ url: string }>('/storage/upload', formData);
+    if (!response || !response.url) {
+      const invalidResponseError: ApiError = {
+        code: 'UPLOAD_INVALID_RESPONSE',
+        message: 'Máy chủ không trả về đường dẫn ảnh sau khi tải lên. Vui lòng thử lại.',
+        status: 0,
+        timestamp: new Date().toISOString(),
+      };
+      throw invalidResponseError;
     }
+    return response.url;
   }
 
+  // Demo mode (no EXPO_PUBLIC_API_URL configured): no remote storage exists,
+  // so the compressed local URI is used. This is NOT a real upload.
   // Realistic simulated network upload delay
   await new Promise((resolve) => setTimeout(resolve, 500));
   return compressedUri;

@@ -60,6 +60,18 @@ export class HttpClient {
       ...headers,
     };
 
+    // FormData (multipart upload): fetch must generate the Content-Type header itself,
+    // because it includes the multipart boundary. A manual or default
+    // 'application/json' / 'multipart/form-data' header breaks the upload.
+    const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
+    if (isFormData) {
+      Object.keys(requestHeaders).forEach((key) => {
+        if (key.toLowerCase() === 'content-type') {
+          delete requestHeaders[key];
+        }
+      });
+    }
+
     // 3. Inject Bearer token from SecureStore if required
     // SECURITY RULE: Token is fetched securely on the fly, never logged to console
     if (requiresAuth) {
@@ -85,7 +97,12 @@ export class HttpClient {
       };
 
       if (body !== undefined && method !== 'GET') {
-        fetchOptions.body = typeof body === 'string' ? body : JSON.stringify(body);
+        // FormData and strings are sent as-is; plain objects are serialized to JSON.
+        fetchOptions.body = isFormData
+          ? (body as FormData)
+          : typeof body === 'string'
+            ? body
+            : JSON.stringify(body);
       }
 
       const response = await fetch(url, fetchOptions);

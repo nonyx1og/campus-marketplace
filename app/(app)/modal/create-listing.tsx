@@ -8,6 +8,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  Linking,
   TouchableOpacity,
   ActivityIndicator,
   ViewStyle,
@@ -36,6 +37,47 @@ const CATEGORY_OPTIONS = [
   'Khác',
 ];
 
+type PermissionSource = 'camera' | 'library';
+
+interface PermissionErrorState {
+  message: string;
+  source: PermissionSource;
+  /** false when the user chose "don't ask again": only system Settings can grant it now */
+  canAskAgain: boolean;
+}
+
+interface FieldErrors {
+  title?: string;
+  price?: string;
+  stock?: string;
+  photo?: string;
+}
+
+/** Pure validation: returns an error per invalid field (empty object = valid). */
+function validateListingForm(input: {
+  title: string;
+  priceStr: string;
+  stockStr: string;
+  hasCompressedImage: boolean;
+}): FieldErrors {
+  const errors: FieldErrors = {};
+  if (!input.title.trim()) {
+    errors.title = 'Vui lòng nhập tên món đồ / giáo trình cần đăng.';
+  }
+  const priceInt = parseInt(input.priceStr.replace(/[^0-9]/g, ''), 10);
+  if (isNaN(priceInt) || priceInt <= 0) {
+    errors.price = 'Giá bán phải là số nguyên dương tính theo đơn vị VND.';
+  }
+  const stockInt = parseInt(input.stockStr.replace(/[^0-9]/g, ''), 10);
+  if (isNaN(stockInt) || stockInt < 0) {
+    errors.stock = 'Số lượng tồn kho phải là số nguyên không âm.';
+  }
+  if (!input.hasCompressedImage) {
+    errors.photo = 'Sản phẩm bắt buộc phải có ít nhất 1 ảnh đã được nén trước khi upload.';
+  }
+  return errors;
+}
+
 export default function CreateListingModalScreen() {
   const router = useRouter();
   const theme = useTheme();
@@ -54,18 +96,20 @@ export default function CreateListingModalScreen() {
   const [isCompressing, setIsCompressing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const [permissionError, setPermissionError] = useState<string | null>(null);
+  const [permissionError, setPermissionError] = useState<PermissionErrorState | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
   /**
    * Handle image compression flow after user picks or shoots a photo
    */
-  const processSelectedImage = async (uri: string, rawFileSize?: number) => {
+  const processSelectedImage = async (uri: string, rawFileSize?: number, sourceWidth?: number) => {
     setIsCompressing(true);
     setErrorMessage('');
     try {
       const rawBytes = rawFileSize && rawFileSize > 0 ? rawFileSize : await getUriFileSize(uri);
-      const result = await compressListingImage(uri, rawBytes);
+      const result = await compressListingImage(uri, rawBytes, sourceWidth);
       setCompressedImage(result);
+      setFieldErrors((prev) => ({ ...prev, photo: undefined }));
     } catch (err) {
       console.error('Image compression failed:', err);
       Alert.alert(
@@ -85,7 +129,11 @@ export default function CreateListingModalScreen() {
     try {
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
-        setPermissionError('Ứng dụng cần quyền truy cập thư viện ảnh để đăng hình sản phẩm.');
+        setPermissionError({
+          message: 'Ứng dụng cần quyền truy cập thư viện ảnh để đăng hình sản phẩm.',
+          source: 'library',
+          canAskAgain: permission.canAskAgain,
+        });
         return;
       }
 
@@ -97,7 +145,7 @@ export default function CreateListingModalScreen() {
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
-        await processSelectedImage(asset.uri, asset.fileSize);
+        await processSelectedImage(asset.uri, asset.fileSize, asset.width);
       }
     } catch {
       setErrorMessage('Không thể mở thư viện ảnh. Vui lòng thử lại.');
@@ -112,7 +160,11 @@ export default function CreateListingModalScreen() {
     try {
       const permission = await ImagePicker.requestCameraPermissionsAsync();
       if (!permission.granted) {
-        setPermissionError('Ứng dụng cần quyền sử dụng máy ảnh để chụp hình sản phẩm trực tiếp.');
+        setPermissionError({
+          message: 'Ứng dụng cần quyền sử dụng máy ảnh để chụp hình sản phẩm trực tiếp.',
+          source: 'camera',
+          canAskAgain: permission.canAskAgain,
+        });
         return;
       }
 
@@ -123,7 +175,7 @@ export default function CreateListingModalScreen() {
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
-        await processSelectedImage(asset.uri, asset.fileSize);
+        await processSelectedImage(asset.uri, asset.fileSize, asset.width);
       }
     } catch {
       setErrorMessage('Không thể mở máy ảnh thiết bị. Vui lòng thử lại.');
@@ -134,32 +186,22 @@ export default function CreateListingModalScreen() {
    * Submit new listing
    */
   const handleSubmit = async () => {
-    if (!title.trim()) {
-      setErrorMessage('Vui lòng nhập tên món đồ / giáo trình cần đăng.');
-      setViewState('error');
+    // Validation errors are shown inline under each field; the form stays visible.
+    // The full-screen error state is reserved for upload/submit failures (with Retry).
+    const errors = validateListingForm({
+      title,
+      priceStr,
+      stockStr,
+      hasCompressedImage: Boolean(compressedImage),
+    });
+    setFieldErrors(errors);
+    // RULE: Photo is strictly required and must be compressed
+    if (Object.keys(errors).length > 0 || !compressedImage) {
       return;
     }
 
     const priceInt = parseInt(priceStr.replace(/[^0-9]/g, ''), 10);
-    if (isNaN(priceInt) || priceInt <= 0) {
-      setErrorMessage('Giá bán phải là số nguyên dương tính theo đơn vị VND.');
-      setViewState('error');
-      return;
-    }
-
     const stockInt = parseInt(stockStr.replace(/[^0-9]/g, ''), 10);
-    if (isNaN(stockInt) || stockInt < 0) {
-      setErrorMessage('Số lượng tồn kho phải là số nguyên không âm.');
-      setViewState('error');
-      return;
-    }
-
-    // RULE: Photo is strictly required and must be compressed
-    if (!compressedImage) {
-      setErrorMessage('Sản phẩm bắt buộc phải có ít nhất 1 ảnh đã được nén trước khi upload.');
-      setViewState('error');
-      return;
-    }
 
     setIsSubmitting(true);
     setViewState('loading');
@@ -189,7 +231,9 @@ export default function CreateListingModalScreen() {
 
       Alert.alert(
         'Đăng tin thành công',
-        `Món đồ "${title.trim()}" đã được đăng lên chợ với ảnh đã nén tiết kiệm ${compressedImage.metrics.ratioPercent}% dung lượng!`,
+        compressedImage.metrics.isMeasured
+          ? `Món đồ "${title.trim()}" đã được đăng lên chợ với ảnh đã nén tiết kiệm ${compressedImage.metrics.ratioPercent}% dung lượng!`
+          : `Món đồ "${title.trim()}" đã được đăng lên chợ với ảnh đã qua nén.`,
         [
           {
             text: 'Xem chợ ngay',
@@ -213,11 +257,33 @@ export default function CreateListingModalScreen() {
     setErrorMessage('');
   };
 
-  // Form validity check
+  /**
+   * Retry the permission that actually failed. If the OS will no longer show
+   * the prompt (user chose "don't ask again"), open the app's system Settings.
+   */
+  const handlePermissionRetry = async () => {
+    if (!permissionError) return;
+    if (!permissionError.canAskAgain) {
+      await Linking.openSettings();
+      return;
+    }
+    if (permissionError.source === 'camera') {
+      await handleCaptureCamera();
+    } else {
+      await handlePickFromLibrary();
+    }
+  };
+
+  // Form validity check (same rules as validateListingForm, plus busy flags)
   const isFormValid =
-    title.trim().length > 0 &&
-    priceStr.trim().length > 0 &&
-    Boolean(compressedImage) &&
+    Object.keys(
+      validateListingForm({
+        title,
+        priceStr,
+        stockStr,
+        hasCompressedImage: Boolean(compressedImage),
+      })
+    ).length === 0 &&
     !isCompressing &&
     !isSubmitting;
 
@@ -350,6 +416,13 @@ export default function CreateListingModalScreen() {
     fontWeight: theme.typography.fontWeights.bold,
   };
 
+  const fieldErrorTextStyle: TextStyle = {
+    fontSize: theme.typography.fontSizes.xs,
+    color: theme.colors.danger,
+    marginTop: -theme.spacing.sm,
+    marginBottom: theme.spacing.md,
+  };
+
   const permissionErrorBox: ViewStyle = {
     backgroundColor: theme.colors.dangerBgMuted,
     borderRadius: theme.radius.md,
@@ -395,6 +468,11 @@ export default function CreateListingModalScreen() {
             accessibilityRole="text"
             accessibilityLabel="Nhập tên sản phẩm cần đăng bán"
           />
+          {fieldErrors.title && (
+            <Text style={fieldErrorTextStyle} accessibilityRole="alert">
+              {fieldErrors.title}
+            </Text>
+          )}
 
           {/* Price & Stock Row */}
           <View style={{ flexDirection: 'row', gap: theme.spacing.md }}>
@@ -410,6 +488,11 @@ export default function CreateListingModalScreen() {
                 accessibilityRole="text"
                 accessibilityLabel="Nhập giá bán bằng số nguyên VND"
               />
+              {fieldErrors.price && (
+                <Text style={fieldErrorTextStyle} accessibilityRole="alert">
+                  {fieldErrors.price}
+                </Text>
+              )}
             </View>
 
             <View style={{ flex: 1 }}>
@@ -424,6 +507,11 @@ export default function CreateListingModalScreen() {
                 accessibilityRole="text"
                 accessibilityLabel="Nhập số lượng tồn kho sản phẩm"
               />
+              {fieldErrors.stock && (
+                <Text style={fieldErrorTextStyle} accessibilityRole="alert">
+                  {fieldErrors.stock}
+                </Text>
+              )}
             </View>
           </View>
 
@@ -473,12 +561,23 @@ export default function CreateListingModalScreen() {
           {/* Permission Error Display with Retry */}
           {permissionError && (
             <View style={permissionErrorBox}>
-              <Text style={permissionErrorText}>⚠️ {permissionError}</Text>
+              <Text style={permissionErrorText}>⚠️ {permissionError.message}</Text>
+              {!permissionError.canAskAgain && (
+                <Text style={permissionErrorText}>
+                  Quyền đã bị chặn. Hãy bật lại trong Cài đặt của thiết bị.
+                </Text>
+              )}
               <AppButton
-                title="Thử cấp lại quyền"
+                title={permissionError.canAskAgain ? 'Thử cấp lại quyền' : 'Mở Cài đặt'}
                 variant="outline"
-                onPress={handlePickFromLibrary}
-                accessibilityLabel="Cấp lại quyền truy cập ảnh"
+                onPress={handlePermissionRetry}
+                accessibilityLabel={
+                  permissionError.canAskAgain
+                    ? permissionError.source === 'camera'
+                      ? 'Cấp lại quyền sử dụng máy ảnh'
+                      : 'Cấp lại quyền truy cập thư viện ảnh'
+                    : 'Mở cài đặt thiết bị để cấp quyền'
+                }
               />
             </View>
           )}
@@ -505,6 +604,14 @@ export default function CreateListingModalScreen() {
               <Text style={imageButtonText}>🖼️ Thư viện ảnh</Text>
             </TouchableOpacity>
           </View>
+          {fieldErrors.photo && (
+            <Text
+              style={[fieldErrorTextStyle, { marginTop: 0 }]}
+              accessibilityRole="alert"
+            >
+              {fieldErrors.photo}
+            </Text>
+          )}
 
           {/* Compressing indicator */}
           {isCompressing && (
@@ -531,21 +638,32 @@ export default function CreateListingModalScreen() {
               <View style={proofRowStyle}>
                 <Text style={proofLabelStyle}>Dung lượng gốc (Raw Photo):</Text>
                 <Text style={proofValueStyle}>
-                  {compressedImage.metrics.formattedRaw} ({compressedImage.metrics.rawBytes} bytes)
+                  {compressedImage.metrics.rawBytes > 0
+                    ? `${compressedImage.metrics.formattedRaw} (${compressedImage.metrics.rawBytes} bytes)`
+                    : 'Không đo được'}
                 </Text>
               </View>
 
               <View style={proofRowStyle}>
                 <Text style={proofLabelStyle}>Dung lượng sau nén (Compressed):</Text>
                 <Text style={proofValueStyle}>
-                  {compressedImage.metrics.formattedCompressed} ({compressedImage.metrics.compressedBytes} bytes)
+                  {compressedImage.metrics.compressedBytes > 0
+                    ? `${compressedImage.metrics.formattedCompressed} (${compressedImage.metrics.compressedBytes} bytes)`
+                    : 'Không đo được'}
                 </Text>
               </View>
 
               <View style={proofRowStyle}>
                 <Text style={proofLabelStyle}>Tỷ lệ dung lượng tiết kiệm:</Text>
-                <Text style={[proofValueStyle, { color: theme.colors.success }]}>
-                  Giảm {compressedImage.metrics.ratioPercent}% ({compressedImage.metrics.formattedSaved})
+                <Text
+                  style={[
+                    proofValueStyle,
+                    compressedImage.metrics.isMeasured && { color: theme.colors.success },
+                  ]}
+                >
+                  {compressedImage.metrics.isMeasured
+                    ? `Giảm ${compressedImage.metrics.ratioPercent}% (${compressedImage.metrics.formattedSaved})`
+                    : 'Không xác định'}
                 </Text>
               </View>
 
@@ -553,14 +671,22 @@ export default function CreateListingModalScreen() {
                 <Text style={proofLabelStyle}>Kích thước hiển thị:</Text>
                 <Text style={proofValueStyle}>
                   {compressedImage.width} x {compressedImage.height} px
+                  {compressedImage.wasResized ? '' : ' (giữ nguyên, ảnh đã nhỏ)'}
                 </Text>
               </View>
 
-              <View style={badgeProofStyle}>
-                <Text style={badgeProofTextStyle}>
-                  ✓ Đạt chuẩn: Không upload ảnh raw chưa qua compression
+              {/* The badge only claims what was actually measured */}
+              {compressedImage.metrics.isMeasured ? (
+                <View style={badgeProofStyle}>
+                  <Text style={badgeProofTextStyle}>
+                    ✓ Ảnh upload là bản đã nén, không phải ảnh raw
+                  </Text>
+                </View>
+              ) : (
+                <Text style={proofLabelStyle}>
+                  Ảnh đã qua expo-image-manipulator nhưng thiết bị không đo được dung lượng file.
                 </Text>
-              </View>
+              )}
             </View>
           )}
 

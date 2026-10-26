@@ -59,8 +59,11 @@ export default function ListingDetailScreen() {
     return 'content';
   })();
 
-  const isAvailable = Boolean(item && (item.stock ?? 1) > 0);
-  const stockCount = item?.stock ?? 1;
+  // Missing or invalid stock data is treated as unavailable instead of silently
+  // assuming 1 item, so bad API data cannot let users add phantom stock to the cart.
+  const stockCount =
+    typeof item?.stock === 'number' && Number.isFinite(item.stock) ? Math.max(0, item.stock) : 0;
+  const isAvailable = Boolean(item) && stockCount > 0;
 
   const handleAddToCart = () => {
     if (!item) return;
