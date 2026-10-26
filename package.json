@@ -8,7 +8,9 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
-    "audit:theme": "node scripts/audit-domain-theme.js"
+    "audit:theme": "node scripts/audit-domain-theme.js",
+    "test": "node scripts/test-auth-session.js",
+    "check:all": "npm run typecheck && npm run audit:theme && npm run test"
   },
   "dependencies": {
     "@expo/vector-icons": "^14.0.0",
@@ -27,6 +29,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.3.0",
+    "tsx": "^4.23.15",
     "typescript": "~6.0.3"
   },
   "private": true

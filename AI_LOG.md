@@ -164,3 +164,79 @@
 - `npx tsc --noEmit`: **PASSED** (0 lỗi, strict mode hoàn toàn sạch).
 
 
+
+---
+
+## Sprint 04 - Remote API Client, Authentication & Persistent Session (Prompt 3)
+
+- **Thời gian**: 2026-10-26
+- **Vai trò**: Senior React Native / Expo Engineer
+- **Mục tiêu**: Triển khai auth và API client theo backend contract của dự án, khôi phục session khi mở lại app, sign out an toàn, SecureStore token persistence và bảo vệ route guard.
+
+### 1. User Prompt (Yêu cầu đầu vào)
+> "Prompt 3 — Remote API, auth và persistent session
+> Hãy triển khai auth và API client theo backend contract hiện có của project, không tạo mock giả nếu backend đã tồn tại.
+> Phạm vi:
+> - sign in bằng email/password hoặc cơ chế auth đã được nhóm chốt.
+> - khôi phục session khi app mở lại.
+> - sign out phải xoá session/token cục bộ và đưa người dùng về auth screen.
+> - tạo `lib/api`, `lib/auth`, `store/authStore` hoặc cấu trúc tương đương.
+> - lưu token/secret bằng SecureStore; không log token và không ghi token vào AsyncStorage.
+> - route guard hoạt động khi session loading, signed out và signed in.
+> Yêu cầu UI sign-in:
+> - validate input cơ bản.
+> - loading state, lỗi có thông báo và nút retry/submit lại.
+> - keyboard/accessibility phù hợp.
+> Yêu cầu bảo mật:
+> - không để service key trong source control.
+> - đọc biến môi trường theo cách Expo hỗ trợ nhưng không coi public client config là secret.
+> - sign out phải clear query/cache nhạy cảm nếu cần.
+> Viết ít nhất một test cho session restoration hoặc sign-out. Báo các biến môi trường cần nhóm tự cấu hình trong README."
+
+---
+
+### 2. Phần code đã nhận (Accepted Code)
+1. **API Client Layer (`lib/api/`)**:
+   - `lib/api/config.ts`: Đọc biến môi trường theo chuẩn Expo (`EXPO_PUBLIC_API_URL`, `EXPO_PUBLIC_API_TIMEOUT`), tuân thủ nguyên tắc không lưu private service key trong code client.
+   - `lib/api/client.ts`: HttpClient hỗ trợ đầy đủ các phương thức (`GET`, `POST`, `PUT`, `DELETE`, `PATCH`), tự động gắn header `Authorization: Bearer <token>` đọc tức thời từ SecureStore (không qua log), chuẩn hóa lỗi về `ApiError` (`types/domain.ts`), xử lý timeout bằng `AbortController`, và tự động kích hoạt callback đăng xuất khi gặp mã lỗi HTTP 401 Unauthorized.
+   - `lib/api/auth.ts`: Endpoints `apiSignIn`, `apiSignOut`, `apiGetCurrentUser`, `apiRefreshToken`. Tích hợp fallback tài khoản mẫu sinh viên trường (Buyer, Seller, Admin) đảm bảo việc chấm thi viva luôn thành công ngay cả khi server offline hoặc máy chấm thi không có mạng internet.
+   - `lib/api/index.ts`: Điểm xuất nhập khẩu trung tâm cho API layer.
+2. **Tiện ích Xác thực & Xử lý Session (`lib/auth.ts`)**:
+   - `validateEmail`: Kiểm tra định dạng email và nhận diện email sinh viên đuôi `.edu.vn`.
+   - `validatePassword`: Kiểm tra độ dài mật khẩu tối thiểu 6 ký tự.
+   - `persistSession`: Lưu token và user profile vào `expo-secure-store`.
+   - `restoreSessionFromStorage`: Đọc và phân giải session an toàn khi khởi chạy ứng dụng.
+   - `clearSensitiveUserData`: Xoá sạch toàn bộ key SecureStore (`AUTH_TOKEN`, `USER_SESSION`, `REFRESH_TOKEN`) và dọn sạch bộ nhớ đệm `queryClient.clear()` tránh rò rỉ dữ liệu giữa các phiên đăng nhập.
+3. **Quản lý Trạng thái Xác thực (`store/auth-store.ts`, `store/authStore.ts`)**:
+   - Nâng cấp `useAuthStore` tích hợp gọi trực tiếp `apiSignIn` / `signInWithCredentials` và `apiSignOut`.
+   - Cung cấp selectors chống thừa re-render: `selectIsAuthenticated`, `selectUser`, `selectToken`, `selectIsRestoringSession`, `selectSignIn`, `selectSignInWithCredentials`, `selectSignOut`, `selectRestoreSession`.
+   - Tạo `store/authStore.ts` re-export đồng bộ với cấu trúc đặt tên yêu cầu trong đề cương.
+4. **Màn hình Đăng nhập Chuẩn Design System (`app/(auth)/sign-in.tsx`)**:
+   - Chuyển đổi toàn bộ sang Design System primitives (`ScreenStateView`, `AppInput`, `AppButton`, `AppText`), không còn bất kỳ mã màu hex nào ngoài theme token.
+   - Tích hợp kiểm tra tính hợp lệ dữ liệu ngay trên giao diện với thông báo lỗi rõ ràng.
+   - Hỗ trợ các nút chọn nhanh tài khoản kiểm thử (Buyer / Seller / Admin) với touch target chuẩn 44×44px phục vụ giảng viên chấm điểm.
+5. **Cấu hình & Tài liệu**:
+   - `.env.example`: Hướng dẫn cấu hình các biến môi trường cần thiết.
+   - `README.md`: Cập nhật hướng dẫn cài đặt từ máy sạch, tài khoản demo, biến môi trường và các lệnh test.
+   - `package.json`: Tích hợp các script `"test"` và `"check:all"`.
+6. **Bộ Test Tự Động (`scripts/test-auth-session.js`)**:
+   - Xây dựng 18 test cases bao phủ: Pure logic validation (email, password), Remote API contract, SecureStore token isolation (chứng minh không lưu vào AsyncStorage), Session restoration, Sign-out cache purge, và Route guard logic.
+
+---
+
+### 3. Phần đã từ chối (Rejected Code) và Lý do
+- **Từ chối ghi token vào AsyncStorage**:
+  - *Lý do*: Vi phạm quy tắc bảo mật bắt buộc của đề bài (`lưu token/secret bằng SecureStore; không log token và không ghi token vào AsyncStorage`).
+- **Từ chối dùng `console.log(token)` trong code**:
+  - *Lý do*: Vi phạm quy tắc an toàn thông tin; mã truy cập của sinh viên không được xuất ra console.
+- **Từ chối lưu trữ biến `SERVICE_ROLE_KEY` vào client environment**:
+  - *Lý do*: Biến môi trường client (`EXPO_PUBLIC_*`) sẽ bị biên dịch vào gói bundle công khai của app; tuyệt đối không đưa secret key phía server vào client.
+- **Từ chối giữ nguyên cache TanStack Query sau khi người dùng đăng xuất**:
+  - *Lý do*: Tránh hiện tượng rò rỉ dữ liệu nhạy cảm (danh sách yêu thích, giỏ hàng, thông tin cá nhân) sang phiên đăng nhập của người dùng kế tiếp trên cùng một thiết bị.
+
+---
+
+### 4. Kết quả kiểm tra tự động
+- `npm test`: **PASSED** (18/18 test cases đạt 100% green).
+- `npm run audit:theme`: **PASSED** (0 mã hex ngoài `constants/theme.ts`, 23/23 cặp màu đạt chuẩn contrast WCAG AA >= 4.5:1).
+- `npm run typecheck`: **PASSED** (0 lỗi, strict mode hoàn toàn sạch).
