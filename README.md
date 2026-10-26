@@ -72,15 +72,18 @@ Trên màn hình Đăng nhập (`app/(auth)/sign-in.tsx`), ứng dụng đã tí
 ## 5. Các lệnh kiểm tra & Bộ Test tự động
 
 ```bash
-# 1. Chạy bộ kiểm thử tự động (Pure Logic, Auth Contract, Session Restore, Sign Out, Route Guard)
+# 1. Chạy bộ kiểm thử tự động (Pure Logic, Auth Contract, Session Restore, Sign Out, Route Guard, Catalogue Offline, Search & Filter)
 npm test
 
-# 2. Kiểm tra tuân thủ mã màu Design Token và độ tương phản WCAG AA (>= 4.5:1)
+# 2. Chạy riêng bộ kiểm thử tính năng Tìm kiếm & Lọc Category (Prompt 5)
+npm run test:filter
+
+# 3. Kiểm tra tuân thủ mã màu Design Token và độ tương phản WCAG AA (>= 4.5:1)
 npm run audit:theme
 
-# 3. Kiểm tra tĩnh TypeScript strict
+# 4. Kiểm tra tĩnh TypeScript strict
 npm run typecheck
 
-# 4. Chạy toàn bộ kiểm tra tổng thể cùng lúc
+# 5. Chạy toàn bộ kiểm tra tổng thể cùng lúc
 npm run check:all
 ```

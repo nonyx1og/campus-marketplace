@@ -240,3 +240,89 @@
 - `npm test`: **PASSED** (18/18 test cases đạt 100% green).
 - `npm run audit:theme`: **PASSED** (0 mã hex ngoài `constants/theme.ts`, 23/23 cặp màu đạt chuẩn contrast WCAG AA >= 4.5:1).
 - `npm run typecheck`: **PASSED** (0 lỗi, strict mode hoàn toàn sạch).
+
+---
+
+## Sprint 05 - Tìm kiếm văn bản & Lọc danh mục Catalogue (Prompt 5)
+
+- **Thời gian**: 2026-10-26
+- **Vai trò**: Senior React Native / Mobile Frontend Architect
+- **Mục tiêu**: Bổ sung tìm kiếm text và lọc category cho catalogue hiện tại, tính toán kết quả lọc thuần tuý trong render/selector, tuyệt đối không lưu dữ liệu dẫn xuất vào state, empty state riêng biệt khi có catalogue nhưng không có kết quả phù hợp, giữ nguyên các trạng thái loading/error/offline, đảm bảo chuẩn accessibility và xây dựng pure function `filterListings` kèm bộ unit test toàn diện.
+
+### 1. User Prompt (Yêu cầu đầu vào)
+> "Prompt 5 — Search và category filter đúng yêu cầu đề bài
+> Hãy bổ sung tìm kiếm text và lọc category cho catalogue hiện tại.
+>
+> Yêu cầu bắt buộc:
+> - Có search input và category selector/chips.
+> - Kết quả lọc phải được tính trong render hoặc selector thuần từ listings + searchText + selectedCategory.
+> - Không lưu `filteredListings`, `searchResults` hoặc dữ liệu dẫn xuất tương tự vào state.
+> - Search không phân biệt hoa thường; xử lý khoảng trắng đầu/cuối.
+> - Có empty state riêng khi có catalogue nhưng không có kết quả phù hợp.
+> - Giữ loading/error/offline states của catalogue.
+> - Control có accessibility label/role; category selector có trạng thái selected dễ nhận biết.
+>
+> Viết pure function `filterListings` và test các trường hợp: search rỗng, category rỗng, cả hai cùng dùng, không có kết quả và dữ liệu thiếu title/category an toàn.
+>
+> Không thay đổi API contract nếu không cần."
+
+---
+
+### 2. Phần code đã nhận (Accepted Code)
+1. **Pure Function `filterListings` (`features/catalogue/filterListings.ts`, `features/catalogue/index.ts`)**:
+   - Nhận vào `(listings, searchText, selectedCategory)`.
+   - Chuẩn hoá từ khoá: `trim()` loại bỏ khoảng trắng dư thừa đầu/cuối và `toLowerCase()` tìm kiếm không phân biệt chữ hoa/thường.
+   - Nhận diện category rỗng: `""`, `"   "`, `null`, `undefined`, `"Tất cả"`, `"All"` đều được xử lý đưa về trạng thái không lọc theo danh mục.
+   - Safe Guard tuyệt đối: Kiểm tra an toàn dữ liệu đầu vào không bao giờ ném ngoại lệ Runtime (`TypeError: Cannot read properties of undefined (reading 'toLowerCase')`) ngay cả khi đối tượng thiếu thuộc tính `title`, `category`, `description` hoặc mang giá trị `null`/`undefined`.
+   - Tính tinh khiết (Purity): Hoàn toàn không làm biến đổi mảng gốc `listings` hoặc các object con, luôn trả về mảng mới xác định (deterministic).
+2. **Kiến trúc Derived State thuần túy trong Render (`app/(app)/(tabs)/index.tsx`)**:
+   - `filteredListings = useMemo(() => filterListings(sourceListings, searchQuery, selectedCategory), [sourceListings, searchQuery, selectedCategory]);`
+   - Tuyệt đối KHÔNG sử dụng `useState`, `useEffect` hay Zustand store để lưu trữ `filteredListings` hay `searchResults`.
+   - Client store (`store/catalogue-store.ts`) chỉ quản lý thuần các input nguyên thuỷ của người dùng (`searchQuery`, `selectedCategory`).
+3. **Empty State riêng biệt khi có Catalogue nhưng không khớp kết quả**:
+   - Phân định rõ 2 kịch bản rỗng:
+     - Kịch bản A (`sourceListings.length === 0`): Toàn bộ hệ thống chưa có sản phẩm nào đăng tải -> Hiển thị Empty State của Catalogue ("Catalogue chưa có sản phẩm").
+     - Kịch bản B (`sourceListings.length > 0 && filteredListings.length === 0`): Catalogue có sản phẩm nhưng bộ lọc tìm kiếm/danh mục không có kết quả -> Hiển thị **Empty State Riêng** với icon kính lúp, thông báo chi tiết từ khoá/danh mục đang lọc, và nút bấm **"Xóa bộ lọc"** (`resetFilters`).
+4. **Bảo toàn toàn bộ Loading / Error / Offline States**:
+   - `isLoading && sourceListings.length === 0`: Hiển thị Skeleton loading (`CatalogueSkeleton`).
+   - `isError && sourceListings.length === 0`: Hiển thị `ErrorState` kèm nút "Thử lại".
+   - `isOffline`: Hiển thị thanh `OfflineBanner` màu vàng cảnh báo dữ liệu ngoại tuyến cùng thời điểm cập nhật lần cuối `lastUpdated` và nút đồng bộ lại mạng.
+   - Pull-to-refresh (`RefreshControl`) vẫn hoạt động trơn tru để kéo mới dữ liệu.
+5. **Khả năng tiếp cận (Accessibility) & Nhận diện trạng thái Selected**:
+   - Search Input: có icon tìm kiếm, nút xoá nhanh (Clear button) khi đã nhập từ khoá, `accessibilityRole="search"`, `accessibilityLabel="Ô tìm kiếm sản phẩm catalogue trong trường"`. Nút xoá từ khoá có touch target tối thiểu 44×44px.
+   - Category Chips:
+     - `accessibilityRole="button"`.
+     - `accessibilityState={{ selected: isSelected }}`.
+     - `accessibilityLabel={`Danh mục ${cat}${isSelected ? ', đang chọn' : ''}`}`.
+     - Trạng thái `selected` được phân biệt trực quan cực kỳ rõ ràng: Nền màu thương hiệu (`primaryBg`), chữ tương phản cao (`textInverse`), font chữ đậm (`bold`), kèm biểu tượng checkmark `✓` phía trước nhãn.
+     - Touch target từng chip đạt chuẩn tối thiểu 44×44px.
+6. **Bộ Test Tự Động Toàn Diện (`scripts/test-search-filter.js`, `npm run test:filter`)**:
+   - Bao phủ 28 test cases nghiêm ngặt kiểm tra:
+     1. Search rỗng (chuỗi rỗng `""`, khoảng trắng `"   "`, `null`, `undefined`, kết hợp category đang chọn).
+     2. Category rỗng (chuỗi rỗng `""`, khoảng trắng `"   "`, `null`, `undefined`, `"Tất cả"`, `"all"`).
+     3. Cả hai cùng dùng (khớp đồng thời search & category, lệch search, lệch category).
+     4. Không có kết quả (từ khoá không tồn tại, danh mục không có hàng, danh sách rỗng).
+     5. Dữ liệu thiếu title/category an toàn (thiếu title, null title, thiếu category, null category, object rỗng, mảng chứa null/undefined primitives, non-array inputs).
+     6. Xử lý không phân biệt hoa/thường tiếng Việt Unicode và cắt khoảng trắng đầu/cuối.
+     7. Tính tinh khiết (immutability của mảng và phần tử, tính xác định lặp lại).
+
+---
+
+### 3. Phần đã từ chối (Rejected Code) và Lý do
+- **Từ chối lưu `filteredListings` hoặc `searchResults` vào `useState` hay Zustand Store**:
+  - *Lý do*: Vi phạm quy tắc kiến trúc của đề bài (`Không coi dữ liệu tìm kiếm/lọc là state; không lưu filteredListings, searchResults hoặc dữ liệu dẫn xuất tương tự vào state`). Đã tính toán thuần tuý trong render cycle qua `useMemo` và pure function `filterListings`.
+- **Từ chối gộp chung Empty State tìm kiếm với Empty State của toàn bộ Catalogue**:
+  - *Lý do*: Vi phạm yêu cầu (`Có empty state riêng khi có catalogue nhưng không có kết quả phù hợp`). Người dùng cần biết rõ sự khác biệt giữa "hệ thống chưa có hàng" và "từ khoá tìm kiếm không khớp".
+- **Từ chối thay đổi API contract của backend**:
+  - *Lý do*: Tuân thủ quy định `Không thay đổi API contract nếu không cần`. Giữ nguyên `CatalogueQueryParams`, `fetchCatalogueListings`, và cấu trúc dữ liệu `ListingItem`.
+- **Từ chối viết mã hex màu trực tiếp trong màn hình**:
+  - *Lý do*: Tuân thủ tuyệt đối quy định Design System của đồ án; 100% style sử dụng Design Tokens từ `constants/theme.ts`.
+
+---
+
+### 4. Kết quả kiểm tra tự động
+- `npm run test:filter`: **PASSED** (28/28 test cases đạt 100% green).
+- `npm test`: **PASSED** (57/57 test cases đạt 100% green across auth, catalogue offline flow, search & filter).
+- `npm run audit:theme`: **PASSED** (0 mã hex ngoài `constants/theme.ts`, 23/23 cặp màu đạt chuẩn contrast WCAG AA >= 4.5:1).
+- `npm run typecheck`: **PASSED** (0 lỗi, strict mode hoàn toàn sạch).
+- `npm run check:all`: **PASSED** (Toàn bộ bài test và kiểm tra tĩnh pass 100%).

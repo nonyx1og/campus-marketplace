@@ -37,33 +37,7 @@ interface CatalogueFetchResult {
   lastUpdated: string;
   isFromCache: boolean;
 }
-
-/**
- * Filter items in-memory when serving offline cache
- */
-function filterCachedItems(
-  items: ListingItem[],
-  category?: string,
-  search?: string
-): ListingItem[] {
-  let filtered = [...items];
-
-  if (category && category !== 'Tất cả') {
-    filtered = filtered.filter((i) => i.category === category);
-  }
-
-  if (search && search.trim()) {
-    const q = search.toLowerCase().trim();
-    filtered = filtered.filter(
-      (i) =>
-        i.title.toLowerCase().includes(q) ||
-        i.description.toLowerCase().includes(q) ||
-        i.category.toLowerCase().includes(q)
-    );
-  }
-
-  return filtered;
-}
+import { filterListings } from './filterListings';
 
 /**
  * Typed TanStack Query hook for catalogue listings with offline persistence fallback.
@@ -109,8 +83,8 @@ export function useCatalogueQuery(params: CatalogueQueryParams = {}): UseCatalog
         const cached = await getCatalogueCache();
 
         if (cached && Array.isArray(cached.items) && cached.items.length > 0) {
-          // Filter cached items in-memory to keep UI responsive
-          const filteredItems = filterCachedItems(cached.items, category, search);
+          // Filter cached items in-memory using pure filterListings
+          const filteredItems = filterListings(cached.items, search, category);
           const startIndex = (page - 1) * limit;
           const paginatedCached = filteredItems.slice(startIndex, startIndex + limit);
 

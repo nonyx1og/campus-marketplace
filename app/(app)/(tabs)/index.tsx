@@ -12,24 +12,23 @@ import {
 import { useRouter } from 'expo-router';
 import { useTheme } from '@/constants/theme';
 import { ScreenState } from '@/components/primitives/ScreenState';
+import { EmptyState } from '@/components/primitives/EmptyState';
 import { AppButton } from '@/components/primitives/AppButton';
 import { useAuthStore, selectSignOut, selectUser } from '@/store/auth-store';
 import {
   useCatalogueStore,
   selectSearchQuery,
   selectSelectedCategory,
-  selectCataloguePage,
-  selectCataloguePageSize,
   selectIsSimulatedOffline,
   selectDemoStateOverride,
   selectSetSearchQuery,
   selectSetSelectedCategory,
-  selectSetCataloguePage,
   selectSetSimulatedOffline,
   selectSetDemoStateOverride,
   selectResetFilters,
 } from '@/store/catalogue-store';
 import { useCatalogueQuery } from '@/features/catalogue/useCatalogueQuery';
+import { filterListings } from '@/features/catalogue/filterListings';
 import { CatalogueCard } from '@/features/catalogue/components/CatalogueCard';
 import { CatalogueSkeleton } from '@/features/catalogue/components/CatalogueSkeleton';
 import { OfflineBanner } from '@/features/catalogue/components/OfflineBanner';
@@ -53,28 +52,23 @@ export default function CatalogueScreen() {
   const user = useAuthStore(selectUser);
   const signOut = useAuthStore(selectSignOut);
 
-  // Client State from Zustand (Search, Filter, Pagination, Offline Demo Toggle)
+  // Client State from Zustand (Only pure user inputs: search text, selected category, demo flags)
+  // Absolutely NO filteredListings or searchResults stored in state!
   const searchQuery = useCatalogueStore(selectSearchQuery);
   const selectedCategory = useCatalogueStore(selectSelectedCategory);
-  const page = useCatalogueStore(selectCataloguePage);
-  const pageSize = useCatalogueStore(selectCataloguePageSize);
   const isSimulatedOffline = useCatalogueStore(selectIsSimulatedOffline);
   const demoStateOverride = useCatalogueStore(selectDemoStateOverride);
 
   const setSearchQuery = useCatalogueStore(selectSetSearchQuery);
   const setSelectedCategory = useCatalogueStore(selectSetSelectedCategory);
-  const setPage = useCatalogueStore(selectSetCataloguePage);
   const setSimulatedOffline = useCatalogueStore(selectSetSimulatedOffline);
   const setDemoStateOverride = useCatalogueStore(selectSetDemoStateOverride);
   const resetFilters = useCatalogueStore(selectResetFilters);
 
-  // Server State from TanStack Query
+  // Server State from TanStack Query (Catalogue source data)
   const {
-    listings,
-    total,
-    hasMore,
+    listings: sourceListings,
     lastUpdated,
-    isFromCache,
     isOffline,
     isLoading,
     isRefetching,
@@ -82,20 +76,29 @@ export default function CatalogueScreen() {
     error,
     refetch,
   } = useCatalogueQuery({
-    page,
-    limit: pageSize,
-    category: selectedCategory,
-    search: searchQuery,
+    page: 1,
+    limit: 50,
   });
 
-  // Calculate 4-State UI
+  // Purely computed in render from listings + searchText + selectedCategory
+  // Never stored in useState or Zustand store!
+  const filteredListings = useMemo(
+    () => filterListings(sourceListings, searchQuery, selectedCategory),
+    [sourceListings, searchQuery, selectedCategory]
+  );
+
+  // Calculate 4-State UI for the overall screen
+  // - 'loading': when initially fetching and no source data
+  // - 'error': when fetch failed and no source/cached data
+  // - 'empty': when the source catalogue itself has 0 items
+  // - 'content': when catalogue has data (filtered results are rendered within content)
   const currentViewState: ScreenViewState = useMemo(() => {
     if (demoStateOverride) return demoStateOverride;
-    if (isLoading && listings.length === 0) return 'loading';
-    if (isError && listings.length === 0) return 'error';
-    if (listings.length === 0) return 'empty';
+    if (isLoading && sourceListings.length === 0) return 'loading';
+    if (isError && sourceListings.length === 0) return 'error';
+    if (sourceListings.length === 0) return 'empty';
     return 'content';
-  }, [demoStateOverride, isLoading, isError, listings.length]);
+  }, [demoStateOverride, isLoading, isError, sourceListings.length]);
 
   const handleRetry = () => {
     setDemoStateOverride(null);
@@ -107,7 +110,8 @@ export default function CatalogueScreen() {
     void refetch();
   };
 
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const isFilterActive =
+    searchQuery.trim().length > 0 || (selectedCategory !== 'Tất cả' && selectedCategory.trim().length > 0);
 
   // --- Dynamic Styles using Theme Tokens (No hex colors!) ---
   const containerStyle: ViewStyle = {
@@ -189,23 +193,53 @@ export default function CatalogueScreen() {
     color: active ? theme.colors.textInverse : theme.colors.text,
   });
 
+  // Search input styles
   const searchSectionStyle: ViewStyle = {
     paddingHorizontal: theme.spacing.screenPadding,
     paddingTop: theme.spacing.sm,
+    paddingBottom: theme.spacing.xs,
     backgroundColor: theme.colors.surface,
   };
 
-  const searchInputStyle: TextStyle = {
-    minHeight: theme.layout.minTouchTarget,
+  const searchInputWrapperStyle: ViewStyle = {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: theme.colors.surfaceSubtle,
     borderRadius: theme.radius.md,
-    paddingHorizontal: theme.spacing.md,
-    fontSize: theme.typography.fontSizes.sm,
-    color: theme.colors.text,
     borderWidth: 1,
     borderColor: theme.colors.borderSubtle,
+    paddingHorizontal: theme.spacing.sm,
+    minHeight: theme.layout.minTouchTarget, // Mandatory >= 44x44
   };
 
+  const searchIconStyle: TextStyle = {
+    fontSize: 16,
+    marginRight: theme.spacing.xs,
+    color: theme.colors.mutedText,
+  };
+
+  const searchInputStyle: TextStyle = {
+    flex: 1,
+    minHeight: theme.layout.minTouchTarget,
+    fontSize: theme.typography.fontSizes.sm,
+    color: theme.colors.text,
+    paddingVertical: 0,
+  };
+
+  const clearSearchBtnStyle: ViewStyle = {
+    minWidth: theme.layout.minTouchTarget, // Mandatory >= 44x44
+    minHeight: theme.layout.minTouchTarget,
+    alignItems: 'center',
+    justifyContent: 'center',
+  };
+
+  const clearSearchTextStyle: TextStyle = {
+    fontSize: 14,
+    color: theme.colors.mutedText,
+    fontWeight: theme.typography.fontWeights.bold,
+  };
+
+  // Category chips styles
   const categoryContainerStyle: ViewStyle = {
     backgroundColor: theme.colors.surface,
     paddingVertical: theme.spacing.xs,
@@ -219,7 +253,7 @@ export default function CatalogueScreen() {
   };
 
   const categoryChipStyle = (isSelected: boolean): ViewStyle => ({
-    minHeight: theme.layout.minTouchTarget,
+    minHeight: theme.layout.minTouchTarget, // Mandatory >= 44x44
     paddingHorizontal: theme.spacing.md,
     borderRadius: theme.radius.pill,
     backgroundColor: isSelected ? theme.colors.primaryBg : theme.colors.surfaceSubtle,
@@ -229,95 +263,57 @@ export default function CatalogueScreen() {
     borderColor: isSelected ? theme.colors.primaryBg : theme.colors.borderSubtle,
   });
 
+  const chipInnerRowStyle: ViewStyle = {
+    flexDirection: 'row',
+    alignItems: 'center',
+  };
+
+  const checkIconStyle: TextStyle = {
+    fontSize: theme.typography.fontSizes.xs,
+    fontWeight: theme.typography.fontWeights.bold,
+    color: theme.colors.textInverse,
+    marginRight: 4,
+  };
+
   const categoryChipTextStyle = (isSelected: boolean): TextStyle => ({
     fontSize: theme.typography.fontSizes.xs,
     fontWeight: isSelected ? theme.typography.fontWeights.bold : theme.typography.fontWeights.medium,
     color: isSelected ? theme.colors.textInverse : theme.colors.mutedText,
   });
 
+  const resultMetaRowStyle: ViewStyle = {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: theme.spacing.screenPadding,
+    paddingVertical: theme.spacing.xs,
+    backgroundColor: theme.colors.background,
+  };
+
+  const resultCountTextStyle: TextStyle = {
+    fontSize: theme.typography.fontSizes.xs,
+    color: theme.colors.mutedText,
+  };
+
+  const clearFilterBtnStyle: ViewStyle = {
+    minHeight: 32,
+    paddingHorizontal: theme.spacing.xs,
+    alignItems: 'center',
+    justifyContent: 'center',
+  };
+
+  const clearFilterTextStyle: TextStyle = {
+    fontSize: theme.typography.fontSizes.xs,
+    color: theme.colors.primary,
+    fontWeight: theme.typography.fontWeights.semibold,
+  };
+
   const listContentStyle: ViewStyle = {
     padding: theme.spacing.screenPadding,
   };
 
-  const paginationContainerStyle: ViewStyle = {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: theme.spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.borderSubtle,
-    marginTop: theme.spacing.sm,
-  };
-
-  const pageInfoTextStyle: TextStyle = {
-    fontSize: theme.typography.fontSizes.sm,
-    fontWeight: theme.typography.fontWeights.medium,
-    color: theme.colors.mutedText,
-  };
-
-  const paginationBtnStyle = (disabled: boolean): ViewStyle => ({
-    minHeight: theme.layout.minTouchTarget,
-    paddingHorizontal: theme.spacing.md,
-    backgroundColor: disabled ? theme.colors.surfaceSubtle : theme.colors.surface,
-    borderWidth: 1,
-    borderColor: theme.colors.borderSubtle,
-    borderRadius: theme.radius.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-    opacity: disabled ? 0.5 : 1,
-  });
-
-  const paginationBtnTextStyle: TextStyle = {
-    fontSize: theme.typography.fontSizes.xs,
-    fontWeight: theme.typography.fontWeights.semibold,
-    color: theme.colors.text,
-  };
-
-  const renderHeader = () => {
-    return (
-      <View>
-        {/* Offline Banner when serving cached data or simulated offline */}
-        {isOffline && (
-          <OfflineBanner
-            lastUpdated={lastUpdated}
-            onRetry={handleRetry}
-            isRetrying={isRefetching}
-          />
-        )}
-      </View>
-    );
-  };
-
-  const renderFooter = () => {
-    if (listings.length === 0) return null;
-
-    return (
-      <View style={paginationContainerStyle}>
-        <TouchableOpacity
-          accessibilityRole="button"
-          accessibilityLabel="Trang trước"
-          style={paginationBtnStyle(page <= 1)}
-          onPress={() => setPage(Math.max(1, page - 1))}
-          disabled={page <= 1}
-        >
-          <Text style={paginationBtnTextStyle}>‹ Trang trước</Text>
-        </TouchableOpacity>
-
-        <Text style={pageInfoTextStyle}>
-          Trang {page} / {totalPages} ({total} sản phẩm)
-        </Text>
-
-        <TouchableOpacity
-          accessibilityRole="button"
-          accessibilityLabel="Trang sau"
-          style={paginationBtnStyle(!hasMore && page >= totalPages)}
-          onPress={() => setPage(page + 1)}
-          disabled={!hasMore && page >= totalPages}
-        >
-          <Text style={paginationBtnTextStyle}>Trang sau ›</Text>
-        </TouchableOpacity>
-      </View>
-    );
+  const emptyIconTextStyle: TextStyle = {
+    fontSize: 28,
   };
 
   return (
@@ -377,17 +373,35 @@ export default function CatalogueScreen() {
         </View>
       </View>
 
-      {/* Search Input */}
+      {/* Search Input Control */}
       <View style={searchSectionStyle}>
-        <TextInput
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          placeholder="Tìm sách, máy tính, bàn học, đồ dùng..."
-          placeholderTextColor={theme.colors.mutedText}
-          style={searchInputStyle}
-          accessibilityRole="search"
-          accessibilityLabel="Ô tìm kiếm sản phẩm catalogue trong trường"
-        />
+        <View style={searchInputWrapperStyle}>
+          <Text style={searchIconStyle} accessibilityElementsHidden>
+            🔍
+          </Text>
+          <TextInput
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="Tìm sách, máy tính, bàn học, đồ dùng..."
+            placeholderTextColor={theme.colors.mutedText}
+            style={searchInputStyle}
+            accessibilityRole="search"
+            accessibilityLabel="Ô tìm kiếm sản phẩm catalogue trong trường"
+            returnKeyType="search"
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Xóa từ khóa tìm kiếm"
+              style={clearSearchBtnStyle}
+              onPress={() => setSearchQuery('')}
+            >
+              <Text style={clearSearchTextStyle}>✕</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       {/* Category Horizontal Filter Chips */}
@@ -402,11 +416,15 @@ export default function CatalogueScreen() {
             return (
               <TouchableOpacity
                 accessibilityRole="button"
-                accessibilityLabel={`Lọc theo danh mục: ${cat}`}
+                accessibilityState={{ selected: isSelected }}
+                accessibilityLabel={`Danh mục ${cat}${isSelected ? ', đang chọn' : ''}`}
                 style={categoryChipStyle(isSelected)}
                 onPress={() => setSelectedCategory(cat)}
               >
-                <Text style={categoryChipTextStyle(isSelected)}>{cat}</Text>
+                <View style={chipInnerRowStyle}>
+                  {isSelected && <Text style={checkIconStyle}>✓</Text>}
+                  <Text style={categoryChipTextStyle(isSelected)}>{cat}</Text>
+                </View>
               </TouchableOpacity>
             );
           }}
@@ -414,20 +432,33 @@ export default function CatalogueScreen() {
         />
       </View>
 
+      {/* Results Meta Info Bar */}
+      {isFilterActive && (
+        <View style={resultMetaRowStyle}>
+          <Text style={resultCountTextStyle}>
+            Kết quả: {filteredListings.length} / {sourceListings.length} sản phẩm
+          </Text>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Xóa toàn bộ bộ lọc tìm kiếm và danh mục"
+            style={clearFilterBtnStyle}
+            onPress={resetFilters}
+          >
+            <Text style={clearFilterTextStyle}>✕ Xóa bộ lọc</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* 4-State Container: Loading, Empty, Error, Content */}
       <ScreenState
         state={currentViewState}
         onRetry={handleRetry}
         retryLabel="Thử lại"
         loadingMessage="Đang tải danh sách đồ dùng sinh viên..."
-        emptyTitle="Không tìm thấy sản phẩm"
-        emptyMessage={
-          searchQuery
-            ? `Không có sản phẩm nào phù hợp với từ khóa "${searchQuery}". Hãy thử tìm kiếm từ khác.`
-            : 'Chưa có sản phẩm nào trong danh mục này.'
-        }
-        emptyActionLabel="Xóa bộ lọc"
-        onEmptyAction={resetFilters}
+        emptyTitle="Catalogue chưa có sản phẩm"
+        emptyMessage="Hiện tại chưa có sản phẩm nào được đăng bán trên Campus Marketplace. Hãy quay lại sau!"
+        emptyActionLabel="Làm mới"
+        onEmptyAction={handleRetry}
         errorTitle="Không thể kết nối"
         errorMessage={
           error?.message ||
@@ -436,17 +467,40 @@ export default function CatalogueScreen() {
         showStateSwitcher
         onStateChange={setDemoStateOverride}
       >
-        {isLoading && listings.length === 0 ? (
+        {isLoading && sourceListings.length === 0 ? (
           <View style={listContentStyle}>
             <CatalogueSkeleton count={3} />
           </View>
+        ) : filteredListings.length === 0 ? (
+          /* Empty state RIÊNG khi có catalogue nhưng không có kết quả phù hợp */
+          <EmptyState
+            icon={<Text style={emptyIconTextStyle}>🔍</Text>}
+            title="Không tìm thấy sản phẩm phù hợp"
+            message={
+              searchQuery.trim() && selectedCategory !== 'Tất cả'
+                ? `Không có sản phẩm nào thuộc danh mục "${selectedCategory}" khớp với từ khóa "${searchQuery.trim()}". Hãy thử từ khóa khác hoặc xóa bộ lọc.`
+                : searchQuery.trim()
+                ? `Không có sản phẩm nào khớp với từ khóa "${searchQuery.trim()}". Hãy thử từ khóa khác hoặc xóa bộ lọc.`
+                : `Hiện tại chưa có sản phẩm nào trong danh mục "${selectedCategory}". Hãy chọn danh mục khác hoặc xóa bộ lọc.`
+            }
+            actionLabel="Xóa bộ lọc"
+            onAction={resetFilters}
+            accessibilityLabel={`Không tìm thấy kết quả phù hợp cho tìm kiếm ${searchQuery}. Nhấn nút để xóa bộ lọc.`}
+          />
         ) : (
           <FlatList
-            data={listings}
+            data={filteredListings}
             keyExtractor={(item: ListingItem) => item.id}
             renderItem={({ item }) => <CatalogueCard item={item} />}
-            ListHeaderComponent={renderHeader}
-            ListFooterComponent={renderFooter}
+            ListHeaderComponent={
+              isOffline ? (
+                <OfflineBanner
+                  lastUpdated={lastUpdated}
+                  onRetry={handleRetry}
+                  isRetrying={isRefetching}
+                />
+              ) : undefined
+            }
             contentContainerStyle={listContentStyle}
             refreshControl={
               <RefreshControl
