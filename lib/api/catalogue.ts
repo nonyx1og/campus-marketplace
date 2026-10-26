@@ -2,6 +2,7 @@ import { apiClient } from './client';
 import { apiConfig, isRemoteApiConfigured } from './config';
 import { ListingItem, CatalogueQueryParams } from '@/types/listing';
 import { PaginatedResponse, ApiError } from '@/types/domain';
+import { getCatalogueCache } from '@/lib/storage/catalogue-cache';
 
 // Simulated offline toggle for team demo and test verification
 let simulatedOfflineMode = false;
@@ -213,4 +214,220 @@ export async function fetchCatalogueListings(
     pageSize: limit,
     hasMore,
   };
+}
+
+/**
+ * Fetch a single listing by its ID.
+ * Queries remote API if configured, falls back to mock data or offline local storage.
+ */
+export async function fetchListingById(id: string): Promise<ListingItem | null> {
+  // 1. Simulated offline mode check
+  if (simulatedOfflineMode) {
+    const cache = await getCatalogueCache();
+    if (cache && Array.isArray(cache.items)) {
+      const match = cache.items.find((item) => item.id === id);
+      if (match) return match;
+    }
+    const offlineError: ApiError = {
+      code: 'NETWORK_OFFLINE',
+      message: 'Thiết bị đang ở chế độ ngoại tuyến và không tìm thấy bản lưu cho sản phẩm này.',
+      status: 0,
+      timestamp: new Date().toISOString(),
+    };
+    throw offlineError;
+  }
+
+  // 2. Remote API request if configured
+  if (isRemoteApiConfigured()) {
+    try {
+      const response = await apiClient.get<ListingItem>(`/listings/${id}`, {
+        requiresAuth: false,
+      });
+      if (response && response.id) {
+        return response;
+      }
+    } catch (error) {
+      if (!apiConfig.isMockFallbackEnabled) {
+        throw error;
+      }
+    }
+  }
+
+  // 3. Fallback: Lookup in in-memory mock catalogue data
+  await new Promise((resolve) => setTimeout(resolve, 200));
+
+  const found = MOCK_CATALOGUE_DATA.find((item) => item.id === id);
+  if (found) return found;
+
+  // 4. Fallback: Lookup in local persistent cache
+  const cache = await getCatalogueCache();
+  if (cache && Array.isArray(cache.items)) {
+    const cachedMatch = cache.items.find((item) => item.id === id);
+    if (cachedMatch) return cachedMatch;
+  }
+
+  return null;
+}
+
+export interface CreateListingInput {
+  title: string;
+  category: string;
+  priceVnd: number;
+  stock: number;
+  campusLocation: string;
+  description: string;
+  photoUri: string;
+  compressedMetrics?: {
+    rawBytes: number;
+    compressedBytes: number;
+    ratioPercent: number;
+  };
+}
+
+/**
+ * Upload a compressed photo to remote storage/API.
+ * In offline/mock mode, simulates network delay and returns the photo URI.
+ */
+export async function uploadListingImage(compressedUri: string): Promise<string> {
+  if (simulatedOfflineMode) {
+    const offlineError: ApiError = {
+      code: 'NETWORK_OFFLINE',
+      message: 'Thiết bị đang ở chế độ ngoại tuyến, không thể tải ảnh lên máy chủ.',
+      status: 0,
+      timestamp: new Date().toISOString(),
+    };
+    throw offlineError;
+  }
+
+  if (isRemoteApiConfigured()) {
+    try {
+      const formData = new FormData();
+      formData.append('file', {
+        uri: compressedUri,
+        type: 'image/jpeg',
+        name: `listing-${Date.now()}.jpg`,
+      } as unknown as Blob);
+
+      const response = await apiClient.post<{ url: string }>('/storage/upload', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      if (response && response.url) {
+        return response.url;
+      }
+    } catch (error) {
+      if (!apiConfig.isMockFallbackEnabled) {
+        throw error;
+      }
+    }
+  }
+
+  // Realistic simulated network upload delay
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  return compressedUri;
+}
+
+/**
+ * Submit a newly created listing with validated fields and compressed photo.
+ */
+export async function createListing(input: CreateListingInput): Promise<ListingItem> {
+  // Validate title
+  if (!input.title || !input.title.trim()) {
+    const error: ApiError = {
+      code: 'VALIDATION_ERROR',
+      message: 'Tên món đồ / giáo trình không được để trống.',
+      status: 400,
+      timestamp: new Date().toISOString(),
+    };
+    throw error;
+  }
+
+  // Validate price (Integer VND)
+  const priceInt = Math.round(Number(input.priceVnd));
+  if (isNaN(priceInt) || priceInt <= 0) {
+    const error: ApiError = {
+      code: 'VALIDATION_ERROR',
+      message: 'Giá bán phải là số nguyên dương tính theo VND.',
+      status: 400,
+      timestamp: new Date().toISOString(),
+    };
+    throw error;
+  }
+
+  // Validate stock (Non-negative integer)
+  const stockInt = Math.round(Number(input.stock));
+  if (isNaN(stockInt) || stockInt < 0) {
+    const error: ApiError = {
+      code: 'VALIDATION_ERROR',
+      message: 'Số lượng tồn kho phải là số nguyên không âm.',
+      status: 400,
+      timestamp: new Date().toISOString(),
+    };
+    throw error;
+  }
+
+  // Validate photo requirement
+  if (!input.photoUri || !input.photoUri.trim()) {
+    const error: ApiError = {
+      code: 'VALIDATION_ERROR',
+      message: 'Vui lòng chọn hoặc chụp ít nhất 1 ảnh sản phẩm và nén trước khi đăng.',
+      status: 400,
+      timestamp: new Date().toISOString(),
+    };
+    throw error;
+  }
+
+  // Check offline mode
+  if (simulatedOfflineMode) {
+    const offlineError: ApiError = {
+      code: 'NETWORK_OFFLINE',
+      message: 'Thiết bị đang ở chế độ ngoại tuyến, không thể đăng tin lên chợ lúc này.',
+      status: 0,
+      timestamp: new Date().toISOString(),
+    };
+    throw offlineError;
+  }
+
+  // Submit to remote API if configured
+  if (isRemoteApiConfigured()) {
+    try {
+      const response = await apiClient.post<ListingItem>('/listings', {
+        ...input,
+        priceVnd: priceInt,
+        priceMinor: priceInt,
+        stock: stockInt,
+      });
+      if (response && response.id) {
+        return response;
+      }
+    } catch (error) {
+      if (!apiConfig.isMockFallbackEnabled) {
+        throw error;
+      }
+    }
+  }
+
+  // Mock server delay & prepend to MOCK_CATALOGUE_DATA for immediate availability
+  await new Promise((resolve) => setTimeout(resolve, 600));
+
+  const newListing: ListingItem = {
+    id: `prod-${Date.now()}`,
+    title: input.title.trim(),
+    description: input.description?.trim() || 'Chưa có mô tả chi tiết.',
+    priceVnd: priceInt,
+    priceMinor: priceInt,
+    stock: stockInt,
+    category: input.category || 'Sách giáo trình',
+    sellerId: 'usr-001',
+    sellerName: 'Nguyễn Thanh Long',
+    campusLocation: input.campusLocation || 'KTX Khu B',
+    photoUri: input.photoUri,
+    imageUrl: input.photoUri,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  MOCK_CATALOGUE_DATA.unshift(newListing);
+  return newListing;
 }

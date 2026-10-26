@@ -2,7 +2,6 @@ import React from 'react';
 import {
   Text as RNText,
   TextProps as RNTextProps,
-  StyleSheet,
   StyleProp,
   TextStyle,
   AccessibilityRole,

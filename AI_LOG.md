@@ -326,3 +326,99 @@
 - `npm run audit:theme`: **PASSED** (0 mã hex ngoài `constants/theme.ts`, 23/23 cặp màu đạt chuẩn contrast WCAG AA >= 4.5:1).
 - `npm run typecheck`: **PASSED** (0 lỗi, strict mode hoàn toàn sạch).
 - `npm run check:all`: **PASSED** (Toàn bộ bài test và kiểm tra tĩnh pass 100%).
+
+
+---
+
+## Sprint 06 - Triển khai Flow Listing Detail, Tạo Listing Có Ảnh Nén & Bằng Chứng Compression
+
+- **Thời gian**: 2026-10-27
+- **Vai trò**: Senior React Native / Expo Engineer
+- **Thành viên phụ trách review**: Nhóm sinh viên Campus Marketplace
+
+### 1. User Prompt (Yêu cầu đầu vào)
+> "Prompt 6 — Listing detail và tạo listing có ảnh nén
+> Hãy triển khai flow listing detail và create listing.
+> Listing detail:
+> - route động `listing/[id].tsx` đọc id từ Expo Router.
+> - query chi tiết hoặc dùng dữ liệu đã cache an toàn.
+> - có loading, empty/not found, error + Retry, content.
+> - hiển thị stock và trạng thái available/unavailable.
+> - nút Add to Favorites và Add to Cart sẽ gọi các store actions đã chuẩn bị.
+> Create listing modal:
+> - title, category, price, stock và ít nhất một ảnh.
+> - chọn ảnh bằng camera hoặc image picker theo permission phù hợp.
+> - trước khi upload, dùng expo-image-manipulator để resize/compress.
+> - upload ảnh đã nén lên remote storage/API.
+> - submit listing lên remote API.
+> - disable submit khi thiếu dữ liệu hoặc đang upload.
+> - hiển thị lỗi permission/upload/validation với cách retry.
+> - sau thành công invalidate/refetch catalogue và đóng modal.
+> Bắt buộc thêm cơ chế đo/prove kích thước: hiển thị hoặc log an toàn raw byte size và compressed byte size trước khi upload, không log dữ liệu nhạy cảm. README phải giải thích cách demo rằng ảnh đã được nén.
+> Không chấp nhận upload raw phone photo trực tiếp nếu chưa qua compression."
+
+---
+
+### 2. Phần code đã nhận (Accepted Code)
+1. **Module Đo lường & Nén ảnh (`features/listing/imageCompression.ts`, `features/listing/index.ts`)**:
+   - `formatBytes(bytes)`: Định dạng kích thước byte trực quan (`B`, `KB`, `MB`).
+   - `calculateCompressionMetrics(rawBytes, compressedBytes)`: Hàm thuần tính toán dung lượng gốc, dung lượng nén, dung lượng tiết kiệm và phần trăm nén (`ratioPercent`). Ngăn chặn lỗi chia cho 0 và giá trị âm.
+   - `compressListingImage(uri, rawBytes)`:
+     - Tích hợp `expo-image-manipulator` resize chiều rộng tối đa `width: 1024px` và nén JPEG `compress: 0.7`.
+     - Đo đạc chính xác byte size trước và sau nén.
+     - Log an toàn console: `[ImageCompression Proof] Raw Size: ... -> Compressed: ... Saved: ...%` (không log thông tin nhạy cảm của người dùng).
+2. **API Layer (`lib/api/catalogue.ts`)**:
+   - `fetchListingById(id)`: Lấy dữ liệu chi tiết sản phẩm từ remote API hoặc mock data; fallback đọc AsyncStorage cache nếu ngoại tuyến.
+   - `uploadListingImage(compressedUri)`: Xử lý upload ảnh đã nén lên server/storage.
+   - `createListing(input)`: Xác thực nghiêm ngặt title (không rỗng), price (integer VND > 0), stock (integer >= 0), và bắt buộc phải có ảnh đã nén. Thêm listing mới vào catalogue in-memory và remote API.
+3. **Màn hình Listing Detail (`app/(app)/listing/[id].tsx`)**:
+   - Route động đọc `id` từ `useLocalSearchParams<{ id: string }>()`.
+   - TanStack Query `useQuery` query dữ liệu chi tiết, caching an toàn.
+   - Phủ đủ 4 trạng thái: `loading` (spinner), `empty/not found` (nút quay lại catalogue), `error + Retry`, `content`.
+   - Hiển thị badge stock & trạng thái:
+     - `stock > 0`: Badge xanh `Còn hàng: X món`.
+     - `stock === 0`: Badge đỏ `Hết hàng / Tạm ngưng` (áp dụng trực tiếp với `prod-106`).
+   - Nút "Thêm vào giỏ": Gọi `useCartStore.getState().addToCart(item)`; bị vô hiệu hoá khi `stock === 0` kèm thông báo rõ ràng.
+   - Nút "Yêu thích": Tích hợp `useFavoritesStore.getState().toggleFavorite(item)` với icon trái tim và nhãn a11y đầy đủ.
+4. **Modal Đăng tin (`app/(app)/modal/create-listing.tsx`)**:
+   - Nhập liệu đầy đủ: `title`, `price` (số nguyên VND), `stock` (số nguyên >= 0), `category` (chọn nhanh bằng category pills), `location`, `description`.
+   - Chọn ảnh bằng Camera (`launchCameraAsync`) hoặc Thư viện ảnh (`launchImageLibraryAsync`) với xử lý phân quyền (`requestCameraPermissionsAsync`, `requestMediaLibraryPermissionsAsync`) và hiển thị thông báo lỗi quyền kèm nút thử lại.
+   - Ngăn chặn upload ảnh raw trực tiếp: Tự động chạy ảnh qua pipeline `compressListingImage` ngay sau khi chọn.
+   - **Thẻ Bằng Chứng Nén Ảnh (Compression Proof Card)**:
+     - Hiển thị ảnh preview đã nén.
+     - Dung lượng ảnh gốc (`rawBytes`) vs Dung lượng sau nén (`compressedBytes`).
+     - Tỷ lệ phần trăm tiết kiệm (ví dụ: `Giảm 91%`).
+     - Badge xác nhận: `✓ Đạt chuẩn: Không upload ảnh raw chưa qua compression`.
+   - Disable nút submit khi thiếu thông tin hoặc chưa có ảnh nén hoặc đang nén/upload.
+   - Invalidate TanStack Query catalogue cache (`queryClient.invalidateQueries({ queryKey: ['catalogue'] })`) để cập nhật ngay catalogue sau khi đăng thành công.
+5. **Shared State Yêu thích (`store/favorites-store.ts`, `app/(app)/(tabs)/favorites.tsx`)**:
+   - Zustand store có selectors và lưu trữ bền vững qua `AsyncStorage`.
+   - Đồng bộ trạng thái yêu thích giữa màn hình Listing Detail và tab Favorites.
+6. **Bộ Test Tự Động (`scripts/test-listing-flow.js`, `npm run test:listing`)**:
+   - 18 test cases bao phủ toàn bộ:
+     - Đo lường dung lượng byte và phần trăm nén ảnh (90% savings proof).
+     - Truy vấn chi tiết sản phẩm theo ID (hợp lệ, null cho id không tồn tại, ngoại tuyến).
+     - Phân định trạng thái stock (còn hàng vs hết hàng).
+     - Ràng buộc dữ liệu tạo tin (bắt buộc title, giá nguyên > 0, stock >= 0, bắt buộc có ảnh đã nén).
+     - Shared state và dedup của Favorites Store.
+
+---
+
+### 3. Phần đã từ chối (Rejected Code) và Lý do
+- **Từ chối upload trực tiếp ảnh chụp từ máy ảnh khi chưa qua nén**:
+  - *Lý do*: Vi phạm quy tắc bắt buộc của đề bài (`Không chấp nhận upload raw phone photo trực tiếp nếu chưa qua compression`). Mọi ảnh đều bắt buộc phải qua `expo-image-manipulator` resize (width 1024px) và compress (0.7).
+- **Từ chối log thông tin nhạy cảm của người dùng khi log kích thước ảnh**:
+  - *Lý do*: Tuân thủ quy định bảo mật (`hiển thị hoặc log an toàn raw byte size và compressed byte size trước khi upload, không log dữ liệu nhạy cảm`). Chỉ ghi log thông số byte và phần trăm tiết kiệm.
+- **Từ chối cho phép thêm vào giỏ hàng đối với sản phẩm hết hàng (`stock === 0`)**:
+  - *Lý do*: Tuân thủ logic nghiệp vụ của sàn thương mại; nút "Thêm vào giỏ" bị disable khi `stock === 0`.
+- **Từ chối hard-code mã màu hex trong các component mới**:
+  - *Lý do*: Tuân thủ Single Source of Truth của Design System tại `constants/theme.ts`.
+
+---
+
+### 4. Kết quả kiểm tra tự động
+- `npm run test:listing`: **PASSED** (18/18 test cases đạt 100% green).
+- `npm test`: **PASSED** (75/75 test cases đạt 100% green across all 4 suites).
+- `npm run audit:theme`: **PASSED** (0 mã hex ngoài `constants/theme.ts`, 23/23 cặp màu đạt chuẩn contrast WCAG AA >= 4.5:1).
+- `npm run typecheck`: **PASSED** (0 lỗi, strict mode hoàn toàn sạch).
+- `npm run check:all`: **PASSED** (Toàn bộ bài test và kiểm tra tĩnh pass 100%).

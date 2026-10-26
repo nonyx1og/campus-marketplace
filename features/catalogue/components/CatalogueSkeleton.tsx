@@ -1,10 +1,10 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Animated, ViewStyle } from 'react-native';
 import { useTheme } from '@/constants/theme';
 
 export const CatalogueSkeletonItem: React.FC = () => {
   const theme = useTheme();
-  const opacityAnim = useRef(new Animated.Value(0.3)).current;
+  const [opacityAnim] = useState(() => new Animated.Value(0.3));
 
   useEffect(() => {
     const animation = Animated.loop(

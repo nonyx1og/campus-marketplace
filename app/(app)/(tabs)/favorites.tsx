@@ -1,140 +1,132 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
+import React, { useEffect } from 'react';
+import { View, Text, FlatList, TouchableOpacity, ViewStyle, TextStyle } from 'react-native';
 import { useRouter } from 'expo-router';
-import { ScreenStateView } from '@/components/common/ScreenStateView';
-import { Tokens } from '@/constants/tokens';
-import { ListingItem, ScreenViewState } from '@/types/listing';
+import { useTheme } from '@/constants/theme';
+import { ScreenState } from '@/components/primitives/ScreenState';
+import {
+  useFavoritesStore,
+  selectFavorites,
+  selectIsFavoritesHydrated,
+} from '@/store/favorites-store';
 import { formatVND } from '@/lib/currency';
-
-const MOCK_FAVORITES: ListingItem[] = [
-  {
-    id: 'prod-101',
-    title: 'Giáo trình Giải tích 1 & 2 (Kèm bài tập)',
-    description: 'Sách còn mới 95%, có ghi chú các dạng đề thi cuối kỳ hay ra.',
-    priceVnd: 75000,
-    category: 'Sách giáo trình',
-    sellerId: 'usr-002',
-    sellerName: 'Lê Hoàng Nam',
-    campusLocation: 'Khu A - Toà Nhà Thư Viện',
-    createdAt: '2026-10-24T10:00:00Z',
-  },
-];
+import { ScreenViewState } from '@/types/domain';
 
 export default function FavoritesScreen() {
   const router = useRouter();
-  const [viewState, setViewState] = useState<ScreenViewState>('content');
-  const [favorites, setFavorites] = useState<ListingItem[]>(MOCK_FAVORITES);
+  const theme = useTheme();
 
-  const handleRetry = () => {
-    setViewState('content');
-    setFavorites(MOCK_FAVORITES);
+  const favorites = useFavoritesStore(selectFavorites);
+  const isHydrated = useFavoritesStore(selectIsFavoritesHydrated);
+  const removeFavorite = useFavoritesStore((state) => state.removeFavorite);
+  const hydrateFavorites = useFavoritesStore((state) => state.hydrateFavorites);
+
+  useEffect(() => {
+    if (!isHydrated) {
+      void hydrateFavorites();
+    }
+  }, [isHydrated, hydrateFavorites]);
+
+  const viewState: ScreenViewState = !isHydrated
+    ? 'loading'
+    : favorites.length === 0
+    ? 'empty'
+    : 'content';
+
+  const containerStyle: ViewStyle = {
+    flex: 1,
+    backgroundColor: theme.colors.background,
   };
 
-  const removeFavorite = (id: string) => {
-    const updated = favorites.filter((item) => item.id !== id);
-    setFavorites(updated);
-    if (updated.length === 0) {
-      setViewState('empty');
-    }
+  const listContentStyle: ViewStyle = {
+    padding: theme.spacing.screenPadding,
+    gap: theme.spacing.md,
+  };
+
+  const cardStyle: ViewStyle = {
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radius.lg,
+    padding: theme.spacing.md,
+    borderWidth: 1,
+    borderColor: theme.colors.borderSubtle,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  };
+
+  const itemTitleStyle: TextStyle = {
+    fontSize: theme.typography.fontSizes.md,
+    fontWeight: theme.typography.fontWeights.bold,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.xxs,
+  };
+
+  const priceTextStyle: TextStyle = {
+    fontSize: theme.typography.fontSizes.md,
+    fontWeight: theme.typography.fontWeights.bold,
+    color: theme.colors.primary,
+    marginBottom: theme.spacing.xxs,
+  };
+
+  const locationTextStyle: TextStyle = {
+    fontSize: theme.typography.fontSizes.xs,
+    color: theme.colors.mutedText,
+  };
+
+  const removeBtnStyle: ViewStyle = {
+    minHeight: theme.layout.minTouchTarget,
+    minWidth: theme.layout.minTouchTarget,
+    paddingHorizontal: theme.spacing.sm,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.colors.dangerBgMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  };
+
+  const removeBtnTextStyle: TextStyle = {
+    fontSize: theme.typography.fontSizes.xs,
+    color: theme.colors.danger,
+    fontWeight: theme.typography.fontWeights.semibold,
   };
 
   return (
-    <View style={styles.container}>
-      <ScreenStateView
+    <View style={containerStyle}>
+      <ScreenState
         state={viewState}
-        onRetry={handleRetry}
-        onStateChange={setViewState}
         loadingMessage="Đang tải danh sách đồ dùng đã lưu..."
         emptyTitle="Chưa có sản phẩm yêu thích"
         emptyMessage="Bạn chưa lưu tin đăng nào. Hãy dạo quanh mục Sản phẩm để tìm món đồ phù hợp."
-        errorMessage="Không thể tải danh sách yêu thích. Vui lòng thử lại."
+        emptyActionLabel="Khám phá chợ ngay"
+        onEmptyAction={() => router.push('/(app)/(tabs)/')}
       >
         <FlatList
           data={favorites}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={listContentStyle}
           renderItem={({ item }) => (
-            <View style={styles.card}>
+            <View style={cardStyle}>
               <TouchableOpacity
                 accessibilityRole="button"
                 accessibilityLabel={`Xem chi tiết sản phẩm yêu thích: ${item.title}`}
-                style={styles.cardContent}
+                style={{ flex: 1, marginRight: theme.spacing.sm }}
                 onPress={() => router.push(`/(app)/listing/${item.id}`)}
               >
-                <Text style={styles.itemTitle}>{item.title}</Text>
-                <Text style={styles.priceText}>{formatVND(item.priceVnd)}</Text>
-                <Text style={styles.locationText}>📍 {item.campusLocation}</Text>
+                <Text style={itemTitleStyle}>{item.title}</Text>
+                <Text style={priceTextStyle}>{formatVND(item.priceVnd)}</Text>
+                <Text style={locationTextStyle}>📍 {item.campusLocation}</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 accessibilityRole="button"
                 accessibilityLabel={`Bỏ thích sản phẩm ${item.title}`}
-                style={styles.removeBtn}
-                onPress={() => removeFavorite(item.id)}
+                style={removeBtnStyle}
+                onPress={() => void removeFavorite(item.id)}
               >
-                <Text style={styles.removeBtnText}>Bỏ lưu</Text>
+                <Text style={removeBtnTextStyle}>Bỏ lưu</Text>
               </TouchableOpacity>
             </View>
           )}
         />
-      </ScreenStateView>
+      </ScreenState>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Tokens.colors.background,
-  },
-  listContent: {
-    padding: Tokens.spacing.screenPadding,
-    gap: Tokens.spacing.md,
-  },
-  card: {
-    backgroundColor: Tokens.colors.surface,
-    borderRadius: Tokens.borderRadius.lg,
-    padding: Tokens.spacing.md,
-    borderWidth: 1,
-    borderColor: Tokens.colors.borderSubtle,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  cardContent: {
-    flex: 1,
-    marginRight: Tokens.spacing.sm,
-  },
-  itemTitle: {
-    fontSize: Tokens.typography.fontSizes.md,
-    fontWeight: Tokens.typography.fontWeights.bold,
-    color: Tokens.colors.textPrimary,
-    marginBottom: Tokens.spacing.xxs,
-  },
-  priceText: {
-    fontSize: Tokens.typography.fontSizes.md,
-    fontWeight: Tokens.typography.fontWeights.bold,
-    color: Tokens.colors.primary,
-    marginBottom: Tokens.spacing.xxs,
-  },
-  locationText: {
-    fontSize: Tokens.typography.fontSizes.xs,
-    color: Tokens.colors.textMuted,
-  },
-  removeBtn: {
-    minHeight: Tokens.layout.minTouchTarget,
-    minWidth: Tokens.layout.minTouchTarget,
-    paddingHorizontal: Tokens.spacing.sm,
-    borderRadius: Tokens.borderRadius.md,
-    backgroundColor: Tokens.colors.surfaceSubtle,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: Tokens.colors.borderSubtle,
-  },
-  removeBtnText: {
-    fontSize: Tokens.typography.fontSizes.xs,
-    color: Tokens.colors.error,
-    fontWeight: Tokens.typography.fontWeights.semibold,
-  },
-});

@@ -72,18 +72,54 @@ Trên màn hình Đăng nhập (`app/(auth)/sign-in.tsx`), ứng dụng đã tí
 ## 5. Các lệnh kiểm tra & Bộ Test tự động
 
 ```bash
-# 1. Chạy bộ kiểm thử tự động (Pure Logic, Auth Contract, Session Restore, Sign Out, Route Guard, Catalogue Offline, Search & Filter)
+# 1. Chạy bộ kiểm thử tự động (Pure Logic, Auth, Session, Catalogue Offline, Search & Filter, Listing Detail & Create Listing)
 npm test
 
-# 2. Chạy riêng bộ kiểm thử tính năng Tìm kiếm & Lọc Category (Prompt 5)
+# 2. Chạy riêng bộ kiểm thử Listing Detail, Nén ảnh & Tạo tin đăng (Prompt 6)
+npm run test:listing
+
+# 3. Chạy riêng bộ kiểm thử tính năng Tìm kiếm & Lọc Category (Prompt 5)
 npm run test:filter
 
-# 3. Kiểm tra tuân thủ mã màu Design Token và độ tương phản WCAG AA (>= 4.5:1)
+# 4. Kiểm tra tuân thủ mã màu Design Token và độ tương phản WCAG AA (>= 4.5:1)
 npm run audit:theme
 
-# 4. Kiểm tra tĩnh TypeScript strict
+# 5. Kiểm tra tĩnh TypeScript strict
 npm run typecheck
 
-# 5. Chạy toàn bộ kiểm tra tổng thể cùng lúc
+# 6. Chạy toàn bộ kiểm tra tổng thể cùng lúc
 npm run check:all
 ```
+
+---
+
+## 6. Hướng dẫn Demo Tính năng Nén ảnh trước khi Upload (Prompt 6)
+
+### Cơ chế kỹ thuật bắt buộc:
+1. **Pipeline nén chuẩn**: Sử dụng `expo-image-manipulator` để xử lý resize kích thước (tối đa chiều ngang `width: 1024px`) và nén JPEG chất lượng `compress: 0.7`.
+2. **Quy tắc tuyệt đối**: Không chấp nhận tải ảnh raw nguyên bản từ camera điện thoại (thường 2MB – 10MB) lên server. Nút submit bị vô hiệu hoá (`disabled`) cho đến khi ảnh đã qua xử lý nén thành công.
+3. **Đo lường & Bằng chứng minh bạch**:
+   - Tự động đo kích thước byte thực tế trước nén (`rawBytes`) và sau nén (`compressedBytes`).
+   - Hiển thị bảng thông số nén **Compression Proof Card** ngay trên màn hình đăng tin để giám khảo và người dùng quan sát trực quan.
+   - Ghi log an toàn ra console terminal:
+     `[ImageCompression Proof] Raw Size: 2.29 MB (2400000 bytes) -> Compressed: 234.4 KB (240000 bytes). Saved: 90%. Output: 1024x768px.`
+     *(Chỉ log kích thước byte và tỉ lệ tiết kiệm, tuyệt đối không log token, mật khẩu hay dữ liệu nhạy cảm)*.
+
+### Các bước thực hiện Demo chấm điểm:
+1. Mở ứng dụng, vào tab **Sản phẩm (Catalogue)**.
+2. Bấm nút **"+ Đăng tin"** trên thanh tiêu đề để mở modal `app/(app)/modal/create-listing.tsx`.
+3. Bấm **"Thư viện ảnh"** (hoặc **"Chụp ảnh mới"**): 
+   - Ứng dụng yêu cầu quyền truy cập media/camera (có xử lý báo lỗi permission rõ ràng nếu bị từ chối).
+   - Chọn một bức ảnh chụp từ thiết bị.
+4. Quan sát thẻ **"✓ Bằng chứng nén ảnh (Compression Proof)"** xuất hiện:
+   - Hiển thị rõ: **Dung lượng gốc** (ví dụ: `2.4 MB`) $\rightarrow$ **Dung lượng sau nén** (ví dụ: `215 KB`), **Tỷ lệ tiết kiệm** (ví dụ: `Giảm 91%`).
+   - Badge kiểm định màu xanh: `✓ Đạt chuẩn: Không upload ảnh raw chưa qua compression`.
+5. Điền thông tin: Tên sản phẩm, giá bán VND (số nguyên), số lượng tồn kho (>= 0), danh mục, địa điểm nhận hàng.
+6. Bấm **"Đăng tin ngay"**:
+   - Ứng dụng tải ảnh nén lên server/storage và gửi dữ liệu listing.
+   - Sau khi tạo thành công, tự động gọi `queryClient.invalidateQueries({ queryKey: ['catalogue'] })` và đóng modal.
+   - Tin đăng mới lập tức xuất hiện ở vị trí đầu tiên của Catalogue với ảnh nén sắc nét và thông tin đầy đủ.
+7. Bấm vào tin vừa đăng (hoặc bất kỳ sản phẩm nào như `prod-101`, `prod-106`) để vào màn hình **Listing Detail (`listing/[id].tsx`)**:
+   - Xem đầy đủ 4 trạng thái (loading, content, empty, error có nút thử lại).
+   - Kiểm tra hiển thị trạng thái stock: sản phẩm có hàng hiển thị badge xanh `Còn hàng`, sản phẩm `prod-106` hiển thị badge đỏ `Hết hàng / Tạm ngưng` và nút "Thêm vào giỏ" bị vô hiệu hoá.
+   - Bấm nút **"Yêu thích"** (icon trái tim): trạng thái lập tức đồng bộ sang tab **Yêu thích (Favorites)** thông qua shared store Zustand.

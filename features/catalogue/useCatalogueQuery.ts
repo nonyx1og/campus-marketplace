@@ -10,6 +10,7 @@ import {
 } from '@/lib/storage/catalogue-cache';
 import { ListingItem, CatalogueQueryParams } from '@/types/listing';
 import { ApiError } from '@/types/domain';
+import { filterListings } from './filterListings';
 
 export interface UseCatalogueQueryResult {
   listings: ListingItem[];
@@ -37,7 +38,6 @@ interface CatalogueFetchResult {
   lastUpdated: string;
   isFromCache: boolean;
 }
-import { filterListings } from './filterListings';
 
 /**
  * Typed TanStack Query hook for catalogue listings with offline persistence fallback.

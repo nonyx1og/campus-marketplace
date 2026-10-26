@@ -12,8 +12,10 @@
     "test:auth": "node scripts/test-auth-session.js",
     "test:catalogue": "node scripts/test-catalogue-flow.js",
     "test:filter": "node scripts/test-search-filter.js",
-    "test": "npm run test:auth && npm run test:catalogue && npm run test:filter",
-    "check:all": "npm run typecheck && npm run audit:theme && npm run test"
+    "test:listing": "node scripts/test-listing-flow.js",
+    "test": "npm run test:auth && npm run test:catalogue && npm run test:filter && npm run test:listing",
+    "check:all": "npm run typecheck && npm run audit:theme && npm run test",
+    "lint": "expo lint"
   },
   "dependencies": {
     "@expo/vector-icons": "^14.0.0",
@@ -21,6 +23,8 @@
     "@tanstack/react-query": "^5.67.1",
     "expo": "~58.0.19",
     "expo-constants": "~58.0.13",
+    "expo-image-manipulator": "~58.0.15",
+    "expo-image-picker": "~58.0.10",
     "expo-linking": "~58.0.14",
     "expo-router": "~58.0.26",
     "expo-secure-store": "~58.0.2",

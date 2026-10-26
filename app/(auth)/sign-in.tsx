@@ -188,7 +188,7 @@ export default function SignInScreen() {
             />
 
             {/* Quick Demo Presets for Grading / Testing */}
-            <View style={styles.demoSection}>
+            <View style={[styles.demoSection, { borderTopColor: theme.colors.borderSubtle }]}>
               <AppText variant="caption" style={styles.demoLabel}>
                 Tài khoản kiểm thử nhanh (Demo Viva / Chấm điểm):
               </AppText>
@@ -296,7 +296,6 @@ const styles = StyleSheet.create({
     marginTop: 20,
     paddingTop: 16,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(0,0,0,0.06)',
   },
   demoLabel: {
     marginBottom: 8,
