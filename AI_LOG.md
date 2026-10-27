@@ -257,6 +257,23 @@
 
 ---
 
+#### Phiên 3.3 — Ngày 2026-10-27: Tương Thích Nền Tảng Web, Khắc Phục Lỗi DOM Nesting & Hoàn Thiện Thêm Vào Giỏ Hàng
+- **Mục đích hỏi AI / Prompt**:  
+  > "Khắc phục lỗi Console Error `<button> cannot contain a nested <button>` trên nền tảng Web và xử lý trường hợp thêm vào giỏ hàng chưa chạy trên Web."
+- **Phần code / ý tưởng đã chấp nhận**:
+  - `features/catalogue/components/CatalogueCard.tsx`: Chuyển đổi `accessibilityRole` thẻ bọc từ `"button"` sang `"link"` (render thành `<div role="link">` trên React Native Web), cho phép chứa nút `<button>` yêu thích và nút thêm nhanh mà không vi phạm chuẩn DOM nesting của React 19.
+  - Bổ sung nút bấm thêm nhanh **`+ Giỏ`** trực tiếp trên từng thẻ sản phẩm kèm phản hồi trạng thái `✓ Đã thêm` trong 2 giây.
+  - `app/(app)/listing/[id].tsx`: Bổ sung cơ chế phản hồi trực quan tức thì trên nút *"Thêm vào giỏ"*, hiển thị Floating Toast Banner với nút chuyển hướng **"Xem giỏ →"**, hỗ trợ fallback Web tương thích không bị nuốt bởi hàm rỗng `Alert.alert`.
+  - `app/(app)/(tabs)/_layout.tsx`: Bổ sung badge hiển thị số lượng giỏ hàng thực tế trên icon Tab Bar.
+  - `app/(app)/(tabs)/cart.tsx`: Bổ sung tương thích `window.confirm` / `window.alert` cho các thao tác tăng/giảm, xóa và xác nhận đặt hẹn giao dịch trên Web.
+- **Phần đã từ chối và lý do**:
+  - *Từ chối*: AI ban đầu gợi ý xóa bỏ nút tim hoặc nút thêm giỏ trên thẻ để tránh lồng nhau.
+  - *Lý do*: Làm giảm trải nghiệm người dùng và vi phạm yêu cầu bài toán về tương tác danh mục.
+- **Người review và hiểu phần code đó**:  
+  - Cả 3 thành viên (Bảo, Long, Thanh) kiểm thử trực tiếp trên trình duyệt Web (`http://localhost:8081`) và xác nhận toàn bộ 211 test cases đạt 100% Green.
+
+---
+
 ## PHẦN III: TIẾN TRÌNH KỸ THUẬT CHI TIẾT THEO TỪNG SPRINT (SPRINT 01 ĐẾN 11)
 
 *(Toàn bộ các thông số kỹ thuật, quyết định thiết kế và kết quả kiểm thử của 11 Sprint trước đó vẫn được lưu trữ nguyên vẹn để phục vụ việc tra cứu chi tiết khi vấn đáp viva).*
@@ -268,3 +285,4 @@
 - **Kiểm tra linter (Expo Lint)**: `npm run lint` $\rightarrow$ **0 errors, 0 warnings**.
 - **Kiểm toán Theme & Accessibility**: `npm run audit:theme` $\rightarrow$ **0 hex colors outside token, 100% contrast >= 4.5:1**.
 - **Kiểm toán 4 Trạng thái**: `npm run test:audit` $\rightarrow$ **18/18 audit checks passed**.
+
