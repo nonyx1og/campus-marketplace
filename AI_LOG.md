@@ -520,3 +520,88 @@
 - `npm run typecheck`: **PASSED** (0 lỗi, strict mode hoàn toàn sạch).
 - `npm run check:all`: **PASSED** (Toàn bộ bài test và kiểm tra tĩnh pass 100%).
 
+
+---
+
+## Sprint 08 - Triển khai Cart, Stock Rule & Checkout Summary (Prompt 8)
+
+- **Thời gian**: 2026-10-27
+- **Vai trò**: Senior React Native / Expo Engineer
+- **Thành viên phụ trách review**: Nhóm sinh viên Campus Marketplace
+
+### 1. User Prompt (Yêu cầu đầu vào)
+> "Prompt 8 — Cart, stock rule và checkout summary
+> Hãy triển khai cart và checkout summary bằng Zustand selectors, không dùng floating-point cho tiền.
+> Yêu cầu:
+> - add/remove item, tăng/giảm quantity.
+> - quantity không vượt stock hiện tại.
+> - khi stock giảm hoặc item không còn available, cart phải tự điều chỉnh hoặc chặn checkout và hiện message rõ ràng.
+> - cart screen có loading, empty, error + Retry nếu cần lấy stock từ server, content.
+> - checkout summary gồm subtotal, delivery rule và total.
+> - tạo pure function tính summary bằng integer minor units; có test.
+> - delivery rule phải hiển thị minh bạch, ví dụ miễn phí từ ngưỡng X hoặc phí cố định, và phải được ghi trong UI/README.
+> - disable checkout khi cart invalid; không giả vờ tạo order nếu backend chưa có order API.
+> - xử lý loading/success/error khi xác nhận checkout.
+> Đảm bảo cart không lưu listing object stale làm nguồn duy nhất; đối chiếu stock/current price từ server hoặc cache rõ ràng. Tất cả nút có accessibility label/role."
+
+---
+
+### 2. Phần code đã nhận (Accepted Code)
+1. **Thiết kế Domain & Types cho Cart (`features/cart/types.ts`)**:
+   - `StoredCartItem`: `{ listingId: string, quantity: number }`.
+   - `EnrichedCartItem`: Chứa trạng thái đánh giá tồn kho (`status: 'valid' | 'exceeds_stock' | 'out_of_stock' | 'deleted'`), `availableStock`, `unitPriceMinor`, `subtotalMinor`, `errorMessage`.
+   - `CartValidationResult`: Đánh giá tổng thể giỏ hàng (`isValid`, `hasOutOfStock`, `hasExceedsStock`, `hasDeleted`, `canCheckout`, `errorSummary`).
+2. **Quy tắc Giao nhận trong Khuôn viên (`features/cart/deliveryRules.ts`)**:
+   - Định nghĩa 3 phương thức giao nhận thực tế:
+     - `direct_meetup`: Hẹn gặp trực tiếp tại Canteen / Thư viện — Phí: **0 đ (Miễn phí 100%)**.
+     - `dorm_delivery`: Giao tận sảnh Ký túc xá — Phí: **10.000 đ**, **Miễn phí từ 100.000 đ** (`DORM_FREE_SHIPPING_THRESHOLD = 100000`).
+     - `campus_pickup`: Nhận tại Trạm tủ đồ sinh viên tự quản — Phí: **5.000 đ**, **Miễn phí từ 50.000 đ** (`CAMPUS_PICKUP_FREE_THRESHOLD = 50000`).
+3. **Pure Function tính toán Checkout Summary (`features/cart/calculateCheckoutSummary.ts`)**:
+   - Tính toán `subtotalMinor`, `deliveryFeeMinor`, `discountMinor`, `totalMinor` hoàn toàn bằng số nguyên VND (`integer`), loại bỏ triệt để lỗi số thực làm tròn.
+   - Hỗ trợ tính phí giao nhận theo ngưỡng miễn phí minh bạch và tự động xử lý giỏ hàng trống hoặc giảm giá vượt mức.
+4. **Pure Function kiểm định & tự động điều chỉnh Tồn kho (`features/cart/stockRules.ts`)**:
+   - `validateCartAgainstStock`: Đối chiếu giỏ hàng với dữ liệu tin đăng mới nhất từ cache/API. Phát hiện chính xác các trường hợp quá tồn kho, hết hàng, hoặc sản phẩm bị người bán xóa.
+   - `autoAdjustCartItems`: Thuật toán tự động cân bằng số lượng về mức tồn kho tối đa khả dụng và gỡ bỏ các sản phẩm không còn tồn tại trên chợ.
+5. **Tái cấu trúc Zustand Cart Store Tinh gọn (`store/cart-store.ts`)**:
+   - Chỉ lưu `items: { listingId: string, quantity: number }[]` và `selectedDeliveryRuleId`. Không lưu trùng lặp đối tượng sản phẩm lớn làm stale state.
+   - Lưu trữ bền vững (`AsyncStorage` key `campus_marketplace_cart_items`), tự động hydrate khi mở ứng dụng và tương thích ngược với format cũ.
+   - Cung cấp selectors chống thừa re-render: `selectCartItems`, `selectCartTotalCount`, `selectSelectedDeliveryRuleId`, `selectIsCartHydrated`.
+   - Các hành động: `addToCart` (kiểm tra tồn kho), `incrementQuantity` (chặn khi chạm trần tồn kho), `decrementQuantity` (tự động xóa khi về 0), `removeFromCart`, `setCartItems`, `setDeliveryRuleId`, `clearCart`.
+6. **Màn hình Giỏ hàng Chuẩn 4 Trạng thái (`app/(app)/(tabs)/cart.tsx`)**:
+   - Dùng TanStack Query `useQuery(['cart', 'stock-reconciliation'])` để đối chiếu tồn kho và giá mới nhất từ máy chủ/cache theo thời gian thực.
+   - Phủ đủ 4 trạng thái qua primitive `ScreenState`: `loading` (spinner kiểm tra tồn kho), `empty` (thông báo giỏ trống kèm nút dạo chợ), `error` (nút "Thử lại"), `content` (kèm thanh chuyển đổi trạng thái phục vụ viva chấm điểm).
+   - Card sản phẩm: Ảnh, tiêu đề, giá VND, nhãn tồn kho, cụm tăng/giảm số lượng (chặn quá stock), nút xóa, thành tiền.
+   - Banner cảnh báo tồn kho và nút bấm "Tự động điều chỉnh theo tồn kho" khi có sản phẩm thay đổi.
+   - Bộ chọn phương thức giao nhận trực quan với ghi chú ngưỡng freeship động.
+   - Khối tổng kết thanh toán (Tạm tính, Phí giao, Tổng cộng VND).
+   - Nút "Xác nhận hẹn gặp giao dịch" bị vô hiệu hóa (`disabled`) khi giỏ không hợp lệ; hiển thị loading khi gửi yêu cầu và thông báo popup xác nhận thành công trước khi dọn giỏ.
+7. **Bộ Test Tự Động Toàn Diện (`scripts/test-cart-flow.js`, `npm run test:cart`)**:
+   - 26/26 test cases đạt 100% green bao phủ toàn bộ yêu cầu Prompt 8.
+
+---
+
+### 3. Phần đã từ chối (Rejected Code) và Lý do
+- **Từ chối dùng kiểu số thực (`float`) cho phép tính tiền tệ trong giỏ hàng**:
+  - *Lý do*: Vi phạm quy tắc bắt buộc của đề bài (`không dùng floating-point cho tiền`). Toàn bộ tính toán được chuẩn hóa số nguyên VND integer minor units.
+- **Từ chối lưu đối tượng `Listing` cũ trực tiếp trong Zustand Cart Store**:
+  - *Lý do*: Vi phạm yêu cầu kiến trúc (`Đảm bảo cart không lưu listing object stale làm nguồn duy nhất; đối chiếu stock/current price từ server hoặc cache rõ ràng`). Đã chuyển sang lưu trữ `{ listingId, quantity }` và đối chiếu động qua TanStack Query.
+- **Từ chối cho phép thêm hoặc tăng số lượng vượt quá tồn kho**:
+  - *Lý do*: Vi phạm yêu cầu (`quantity không vượt stock hiện tại`). Mọi action `addToCart`, `incrementQuantity` đều kiểm tra và chặn người dùng thêm hàng ảo.
+- **Từ chối giả lập tạo đơn hàng API ảo khi backend chưa có API đặt hàng**:
+  - *Lý do*: Vi phạm quy tắc đề bài (`không giả vờ tạo order nếu backend chưa có order API`). Thao tác thanh toán được xử lý đúng bản chất là gửi lịch hẹn gặp trực tiếp trao đổi trong khuôn viên trường.
+- **Từ chối hard-code mã màu hex ngoài token**:
+  - *Lý do*: Tuân thủ quy định Single Source of Truth của hệ thống Design System (`constants/theme.ts`).
+
+---
+
+### 4. Kết quả kiểm tra tự động
+- `npm run test:cart`: **PASSED** (26/26 test cases đạt 100% green).
+- `npm run test:favorites`: **PASSED** (22/22 test cases đạt 100% green).
+- `npm run test:listing`: **PASSED** (18/18 test cases đạt 100% green).
+- `npm run test:filter`: **PASSED** (28/28 test cases đạt 100% green).
+- `npm run test:catalogue`: **PASSED** (11/11 test cases đạt 100% green).
+- `npm run test:auth`: **PASSED** (18/18 test cases đạt 100% green).
+- `npm test`: **PASSED** (123/123 test cases đạt 100% green across all 6 test suites).
+- `npm run audit:theme`: **PASSED** (0 mã hex ngoài `constants/theme.ts`, 23/23 cặp màu đạt chuẩn contrast WCAG AA >= 4.5:1).
+- `npm run typecheck`: **PASSED** (0 lỗi, strict mode hoàn toàn sạch).
+- `npm run check:all`: **PASSED** (Toàn bộ kiểm tra tĩnh và kiểm thử tự động pass 100%).

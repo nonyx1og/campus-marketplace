@@ -178,3 +178,55 @@ npm run check:all
   - Khi chưa yêu thích: `"Lưu sản phẩm [Tên sản phẩm] vào danh sách yêu thích"`.
   - Khi đã yêu thích: `"Bỏ lưu sản phẩm [Tên sản phẩm] khỏi danh sách yêu thích"`.
 
+
+---
+
+## 8. Kiến trúc Giỏ hàng, Quy tắc Quản lý Tồn kho & Tổng kết Thanh toán (Prompt 8)
+
+### 1. Kiến trúc Client State Tối giản & Tính toán Tiền tệ Số nguyên (Integer VND)
+- **State Client tinh gọn**: Zustand cart store (`store/cart-store.ts`) chỉ lưu trữ mảng định danh và số lượng: `items: { listingId: string; quantity: number }[]`, kèm `selectedDeliveryRuleId`.
+- **Không duplicate server state**: Tuyệt đối không lưu đối tượng `Listing` cũ làm nguồn dữ liệu duy nhất. Giá bán, tiêu đề và số lượng tồn kho luôn được đối chiếu trực tiếp từ TanStack Query cache / remote API (`useQuery(['cart', 'stock-reconciliation'])`).
+- **Toán tử số nguyên an toàn**: Toàn bộ phép tính tiền `subtotalMinor`, `deliveryFeeMinor`, `discountMinor`, `totalMinor` sử dụng hàm thuần khiết `calculateCheckoutSummary` tính toán bằng số nguyên VND (`Math.floor` / `Math.round`), tuyệt đối không dùng số thực `floating-point` để loại bỏ 100% lỗi làm tròn xu/hào.
+
+### 2. Quy tắc Quản lý Tồn kho (Stock Rules) & Tự động Điều chỉnh
+- **Kiểm soát số lượng chặt chẽ**:
+  - Không cho phép số lượng đặt mua vượt quá tồn kho thực tế (`quantity <= stock`).
+  - Thêm sản phẩm từ trang chi tiết hoặc tăng số lượng trong giỏ hàng sẽ bị chặn nếu vượt mức tồn kho hiện có.
+- **Phát hiện biến động tồn kho**:
+  - Nếu sản phẩm bị người bán xóa hoặc không còn tồn tại $\rightarrow$ Trạng thái `deleted` (Badge đỏ cảnh báo).
+  - Nếu sản phẩm hết hàng (`stock === 0`) $\rightarrow$ Trạng thái `out_of_stock` (Badge đỏ cảnh báo).
+  - Nếu số lượng đặt vượt quá tồn kho hiện có $\rightarrow$ Trạng thái `exceeds_stock` (Badge cam cảnh báo).
+- **Banner cảnh báo & Nút Tự động điều chỉnh (Auto-adjust)**:
+  - Khi phát hiện tồn kho không hợp lệ, xuất hiện banner thông báo rõ ràng kèm nút **"Tự động điều chỉnh theo tồn kho"** (`autoAdjustCartItems`).
+  - Hàm tự động cân bằng số lượng về mức tồn kho tối đa có sẵn và loại bỏ các món đã hết hàng hoặc bị xóa.
+
+### 3. Chính sách Giao nhận Minh bạch trong Khuôn viên (Delivery Rules)
+Hệ thống hiển thị rõ ràng 3 phương thức giao nhận phù hợp với môi trường đại học:
+1. **Hẹn gặp trong khuôn viên (Thư viện / Canteen)** (`direct_meetup`):
+   - Phí: **0 đ (Miễn phí 100%)**
+   - Áp dụng: Gặp trực tiếp bạn học trao đổi đồ tại sảnh trường, canteen hoặc thư viện.
+2. **Giao tận Ký túc xá sinh viên** (`dorm_delivery`):
+   - Phí: **10.000 đ**
+   - Ngưỡng miễn phí: **Miễn phí giao KTX cho đơn hàng từ 100.000 đ trở lên** (`subtotalMinor >= 100000`).
+   - Có dòng nhắc nhở thông minh: *"Thêm X đ để được Miễn phí giao tận phòng KTX"*.
+3. **Nhận tại Trạm đồ sinh viên tự quản** (`campus_pickup`):
+   - Phí: **5.000 đ**
+   - Ngưỡng miễn phí: **Miễn phí tại Trạm đồ cho đơn hàng từ 50.000 đ trở lên** (`subtotalMinor >= 50000`).
+
+### 4. Quy tắc An toàn Checkout & Hẹn Giao dịch
+- **Vô hiệu hóa Checkout khi giỏ không hợp lệ**: Nút thanh toán bị vô hiệu hóa (`disabled`) và hiển thị thông báo nếu trong giỏ có món vượt tồn kho, hết hàng hoặc đã bị xóa.
+- **Không giả vờ tạo order ảo**: Vì đồ án là sàn trao đổi đồ sinh viên và backend chưa có endpoint đặt hàng phức tạp, thao tác xác nhận hẹn giao dịch gửi thông báo hẹn gặp người bán kèm tóm tắt chi phí rõ ràng để thanh toán trực tiếp khi gặp mặt.
+- **Xử lý trạng thái Loading & Success**: Nút hiển thị spinner khi đang gửi yêu cầu và thông báo popup xác nhận thành công trước khi dọn giỏ hàng.
+
+### 5. Bộ Kiểm thử Giỏ hàng Tự động (Prompt 8 Test Suite)
+Chạy lệnh:
+```bash
+npm run test:cart
+```
+Bao phủ 26 test cases đạt 100% green:
+- Thuật toán tính toán tiền tệ integer VND, ngưỡng miễn phí KTX và Trạm đồ.
+- Logic kiểm định tồn kho: `valid`, `exceeds_stock`, `out_of_stock`, `deleted`.
+- Khả năng tự động điều chỉnh số lượng tồn kho `autoAdjustCartItems`.
+- Lưu trữ bền vững cart qua AsyncStorage, phục hồi hydration và tương thích format cũ.
+- Đối chiếu stock động theo thời gian thực (Server stock drop protection).
+- Chuẩn tiếp cận WCAG AA (touch target >= 44x44, nhãn a11y động).

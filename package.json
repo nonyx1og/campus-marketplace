@@ -14,7 +14,8 @@
     "test:filter": "node scripts/test-search-filter.js",
     "test:listing": "node scripts/test-listing-flow.js",
     "test:favorites": "node scripts/test-favorites-flow.js",
-    "test": "npm run test:auth && npm run test:catalogue && npm run test:filter && npm run test:listing && npm run test:favorites",
+    "test:cart": "node scripts/test-cart-flow.js",
+    "test": "npm run test:auth && npm run test:catalogue && npm run test:filter && npm run test:listing && npm run test:favorites && npm run test:cart",
     "check:all": "npm run typecheck && npm run audit:theme && npm run test",
     "lint": "expo lint"
   },
