@@ -18,7 +18,8 @@
     "test:seller-buyer": "node scripts/test-seller-buyer-flow.js",
     "test:notifications": "node scripts/test-notifications-flow.js",
     "test:pull-to-refresh": "node scripts/test-pull-to-refresh.js",
-    "test": "npm run test:auth && npm run test:catalogue && npm run test:filter && npm run test:listing && npm run test:favorites && npm run test:cart && npm run test:seller-buyer && npm run test:notifications && npm run test:pull-to-refresh",
+    "test:audit": "node scripts/test-prompt10-audit.js",
+    "test": "npm run test:auth && npm run test:catalogue && npm run test:filter && npm run test:listing && npm run test:favorites && npm run test:cart && npm run test:seller-buyer && npm run test:notifications && npm run test:pull-to-refresh && npm run test:audit",
     "check:all": "npm run typecheck && npm run audit:theme && npm run test",
     "lint": "expo lint"
   },

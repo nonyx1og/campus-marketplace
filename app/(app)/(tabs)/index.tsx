@@ -10,7 +10,7 @@ import {
   TextStyle,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useTheme } from '@/constants/theme';
+import { useTheme, useThemeContext } from '@/constants/theme';
 import { ScreenState } from '@/components/primitives/ScreenState';
 import { EmptyState } from '@/components/primitives/EmptyState';
 import { AppButton } from '@/components/primitives/AppButton';
@@ -47,7 +47,7 @@ const CATEGORIES = [
 
 export default function CatalogueScreen() {
   const router = useRouter();
-  const theme = useTheme();
+  const { theme, toggleTheme } = useThemeContext();
 
   // Auth User & Actions
   const user = useAuthStore(selectUser);
@@ -212,12 +212,16 @@ export default function CatalogueScreen() {
   };
 
   const demoChipStyle = (active: boolean): ViewStyle => ({
-    paddingHorizontal: theme.spacing.xs,
+    minHeight: theme.layout.minTouchTarget,
+    minWidth: theme.layout.minTouchTarget,
+    paddingHorizontal: theme.spacing.sm,
     paddingVertical: theme.spacing.xxs,
     borderRadius: theme.radius.xs,
     backgroundColor: active ? theme.colors.warning : theme.colors.surface,
     borderWidth: 1,
     borderColor: active ? theme.colors.warning : theme.colors.borderSubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
   });
 
   const demoChipTextStyle = (active: boolean): TextStyle => ({
@@ -329,8 +333,9 @@ export default function CatalogueScreen() {
   };
 
   const clearFilterBtnStyle: ViewStyle = {
-    minHeight: 32,
-    paddingHorizontal: theme.spacing.xs,
+    minHeight: theme.layout.minTouchTarget,
+    minWidth: theme.layout.minTouchTarget,
+    paddingHorizontal: theme.spacing.sm,
     alignItems: 'center',
     justifyContent: 'center',
   };

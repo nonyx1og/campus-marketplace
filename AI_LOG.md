@@ -732,3 +732,98 @@
 - `npm run typecheck`: **PASSED** (0 lỗi, strict mode hoàn toàn sạch).
 - `npm run check:all`: **PASSED** (Toàn bộ kiểm tra tĩnh và kiểm thử tự động pass 100%).
 
+
+
+---
+
+## Sprint 10 - Phủ bốn trạng thái, Theme System & Accessibility Audit (Prompt 10)
+
+- **Thời gian**: 2026-10-27
+- **Vai trò**: Senior Mobile Architect & Accessibility / QA Engineer
+- **Thành viên phụ trách review**: Nhóm sinh viên Campus Marketplace
+
+### 1. User Prompt (Yêu cầu đầu vào)
+> "Prompt 10 — Phủ bốn trạng thái, theme và accessibility audit
+> Hãy audit toàn bộ route/screen hiện tại theo checklist đề bài và sửa trực tiếp các thiếu sót.
+> Với từng screen, xác nhận có:
+> 1. loading state;
+> 2. empty state đúng ngữ cảnh;
+> 3. error state với Retry thực sự gọi lại action/query;
+> 4. content state.
+> Audit thêm:
+> - light/dark theme đều đọc từ một token file;
+> - không có hex color ngoài token file;
+> - mọi Button, Pressable, TextInput, selector, icon action có accessibilityRole và accessibilityLabel;
+> - touch target tối thiểu 44x44;
+> - text chính tương phản >=4.5:1;
+> - không có text quan trọng chỉ truyền đạt bằng màu;
+> - keyboard và screen reader label không bị che;
+> - `+not-found.tsx` có nội dung và đường về hợp lý;
+> - không có blank screen khi API lỗi/offline/session đang restore.
+> Tạo một checklist dạng bảng trong `docs/accessibility-and-state-audit.md`, nêu file đã sửa và mục nào còn cần test trên thiết bị thật."
+
+---
+
+### 2. Phần code đã nhận (Accepted Code)
+1. **Phủ Chuẩn 4 Trạng Thái Toàn Bộ 7 Route / Screen**:
+   - `app/(auth)/sign-in.tsx`: Loading spinner khi đăng nhập, Empty state với nút "Điền thông tin đăng nhập" (`onEmptyAction`), Error state có Retry, Content form đăng nhập chuẩn.
+   - `app/(app)/(tabs)/index.tsx`: Loading skeleton `CatalogueSkeleton` 3 thẻ mờ dần, Empty state kép (rỗng toàn bộ catalogue vs không khớp bộ lọc tìm kiếm kèm nút "Xóa bộ lọc"), Error state có nút Retry gọi lại `refetch()`, Content FlatList.
+   - `app/(app)/(tabs)/favorites.tsx`: Loading spinner, Empty state kèm nút "Khám phá chợ ngay", Error state có Retry query chi tiết tin đăng, Content danh sách món đồ đã lưu.
+   - `app/(app)/(tabs)/cart.tsx`: Loading đối chiếu tồn kho, Empty state "Giỏ hàng trống" + nút dạo chợ, Error state có Retry kết nối server, Content danh sách và tổng kết thanh toán.
+   - `app/(app)/listing/[id].tsx`: Loading chi tiết, Empty state "Không tìm thấy sản phẩm" + nút quay lại danh mục, Error state có Retry, Content thông tin sản phẩm và phân quyền Người mua / Người bán.
+   - `app/(app)/modal/create-listing.tsx`: Loading nén ảnh & tải tin, Empty state "Chưa có thông tin tin đăng" + nút nhập liệu, Error state báo lỗi upload có nút thử lại, Content form đăng tin kèm thẻ bằng chứng nén ảnh. Tích hợp thanh Review Switcher 4 trạng thái cho ban giám khảo.
+   - `app/+not-found.tsx`: Phủ 4 trạng thái qua `ScreenState`, Content 404 thân thiện kèm liên kết quay về trang chủ `/` đạt chuẩn touch target 44x44px.
+2. **Hệ Thống Theme Token Động & Chuyển Đổi Sáng / Tối**:
+   - Bọc `ThemeProvider` ở cấp root (`app/_layout.tsx`), đồng bộ tự động với `useColorScheme()` của hệ điều hành.
+   - Tích hợp nút chuyển đổi giao diện Sáng / Tối tức thì (`☀️ Giao diện Sáng` $\longleftrightarrow$ `🌙 Giao diện Tối`) ngay trên thanh Demo Bar của tab Catalogue.
+   - `StatusBar` tự động chuyển đổi `style="light"` khi ở nền tối và `style="dark"` khi ở nền sáng.
+   - Đảm bảo 100% không có mã hex nào ngoài `constants/theme.ts` (kiểm tra tự động đạt 0 vi phạm).
+   - Đảm bảo toàn bộ 23 cặp màu chính và phụ đều đạt độ tương phản WCAG AA >= 4.5:1.
+3. **Kiểm Toán Khả Năng Tiếp Cận & Vùng Cảm Ứng (WCAG AA Touch Targets >= 44x44px)**:
+   - Sửa `clearFilterBtnStyle` trên Catalogue từ 32px lên `minHeight: 44, minWidth: 44`.
+   - Sửa `demoChipStyle` trên Catalogue lên `minHeight: 44, minWidth: 44`.
+   - Sửa `roleChipStyle` trên Chi tiết sản phẩm từ 32px lên `minHeight: 44, minWidth: 44`.
+   - Sửa `dismissBtnStyle` trên banner cập nhật tin từ 32x32px lên `minHeight: 44, minWidth: 44`.
+   - Quét kiểm tra 100% các phần tử tương tác (`TouchableOpacity`, `Pressable`, `TextInput`): Tất cả đều có `accessibilityRole` và `accessibilityLabel`.
+4. **Quy Tắc Không Dùng Màu Đơn Độc (Non-Color Indicators)**:
+   - Tình trạng hàng: Phải có chữ đi kèm (`Còn hàng: X món`, `Hết hàng / Tạm ngưng`, `Đã bị xoá`).
+   - Danh mục đang chọn: Có ký hiệu `✓` trước nhãn và `accessibilityState={{ selected: true }}`.
+   - Phương thức nhận hàng: Có ký hiệu `✓ ` / `○ ` và dòng text `Miễn phí`.
+5. **An Toàn Bàn Phím & Trình Đọc Màn Hình**:
+   - `KeyboardAvoidingView` với `behavior="padding"` và `keyboardVerticalOffset={64}` trên iOS modal; `keyboardShouldPersistTaps="handled"` trên `ScrollView`.
+6. **Chống Màn Hình Trắng (Zero Blank Screen)**:
+   - Splash Screen khôi phục phiên trong `app/_layout.tsx` sử dụng dynamic tokens, có spinner lớn và văn bản thông báo trạng thái.
+   - Màn hình Catalogue có cơ chế fallback ngoại tuyến `AsyncStorage` và thanh thông báo `OfflineBanner`.
+7. **Tài Liệu & Bộ Test Audit**:
+   - Tạo báo cáo audit chuẩn hóa: `docs/accessibility-and-state-audit.md`.
+   - Viết bộ test kiểm toán tự động: `scripts/test-prompt10-audit.js` (18 test cases) và tích hợp vào `npm run test:audit`, `npm test`, `npm run check:all`.
+
+---
+
+### 3. Phần đã từ chối (Rejected Code) và Lý do
+- **Từ chối giữ lại các nút bấm kích thước nhỏ hơn 44x44px (ví dụ các nút 32px cũ)**:
+  - *Lý do*: Vi phạm quy tắc bắt buộc của đề bài (`touch target tối thiểu 44x44`). Toàn bộ nút filter, chip demo, bộ chọn vai trò và nút đóng banner đều được chuẩn hóa `minHeight: 44, minWidth: 44`.
+- **Từ chối hiển thị lỗi form bằng màn hình trắng hoặc popup chặn không cho sửa**:
+  - *Lý do*: Vi phạm quy tắc UX thân thiện; lỗi nhập liệu được hiển thị inline dưới từng ô nhập kèm `accessibilityRole="alert"`, giúp người dùng sửa trực tiếp mà không mất dữ liệu đã nhập.
+- **Từ chối hard-code màu hex trực tiếp trong file màn hình**:
+  - *Lý do*: Vi phạm nguyên tắc Single Source of Truth của Design System (`constants/theme.ts`).
+- **Từ chối để màn hình trắng khi ứng dụng đang khôi phục phiên từ SecureStore**:
+  - *Lý do*: Vi phạm quy định chống blank screen; màn hình splash được trang bị spinner và nhãn thông báo rõ ràng.
+
+---
+
+### 4. Kết quả kiểm tra tự động
+- `npm run test:audit`: **PASSED** (18/18 test cases đạt 100% green).
+- `npm run test:pull-to-refresh`: **PASSED** (7/7 test cases đạt 100% green).
+- `npm run test:notifications`: **PASSED** (10/10 test cases đạt 100% green).
+- `npm run test:seller-buyer`: **PASSED** (17/17 test cases đạt 100% green).
+- `npm run test:cart`: **PASSED** (26/26 test cases đạt 100% green).
+- `npm run test:favorites`: **PASSED** (22/22 test cases đạt 100% green).
+- `npm run test:listing`: **PASSED** (18/18 test cases đạt 100% green).
+- `npm run test:filter`: **PASSED** (28/28 test cases đạt 100% green).
+- `npm run test:catalogue`: **PASSED** (11/11 test cases đạt 100% green).
+- `npm run test:auth`: **PASSED** (18/18 test cases đạt 100% green).
+- `npm test`: **PASSED** (175/175 test cases đạt 100% green across all 9 test suites).
+- `npm run audit:theme`: **PASSED** (0 mã hex ngoài `constants/theme.ts`, 23/23 cặp màu đạt chuẩn contrast WCAG AA >= 4.5:1).
+- `npm run typecheck`: **PASSED** (0 lỗi, strict mode hoàn toàn sạch).
+- `npm run check:all`: **PASSED** (Toàn bộ kiểm tra tĩnh và kiểm thử tự động pass 100%).

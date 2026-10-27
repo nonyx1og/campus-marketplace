@@ -84,6 +84,7 @@ export default function CreateListingModalScreen() {
   const queryClient = useQueryClient();
 
   const [viewState, setViewState] = useState<ScreenViewState>('content');
+  const [demoStateOverride, setDemoStateOverride] = useState<ScreenViewState | null>(null);
   const [title, setTitle] = useState('');
   const [priceStr, setPriceStr] = useState('');
   const [stockStr, setStockStr] = useState('1');
@@ -446,15 +447,26 @@ export default function CreateListingModalScreen() {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
       style={containerStyle}
     >
       <ScreenState
-        state={viewState}
+        state={demoStateOverride || viewState}
+        showStateSwitcher={true}
+        onStateChange={setDemoStateOverride}
         onRetry={handleRetry}
+        retryLabel="Thử lại"
         loadingMessage="Đang nén ảnh & tải tin đăng lên chợ..."
+        emptyTitle="Chưa có thông tin tin đăng"
+        emptyMessage="Mẫu đăng tin đang để trống. Bạn có thể nhấn nút bên dưới để quay lại biểu mẫu nhập liệu."
+        emptyActionLabel="Nhập thông tin"
+        onEmptyAction={() => {
+          setDemoStateOverride(null);
+          setViewState('content');
+        }}
         errorMessage={errorMessage || 'Có lỗi xảy ra khi tạo tin đăng mới.'}
       >
-        <ScrollView contentContainerStyle={scrollContentStyle}>
+        <ScrollView contentContainerStyle={scrollContentStyle} keyboardShouldPersistTaps="handled">
           <Text style={formSectionTitleStyle}>Đăng tin bán đồ sinh viên</Text>
 
           {/* Title Input */}

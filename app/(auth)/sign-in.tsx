@@ -94,6 +94,8 @@ export default function SignInScreen() {
         errorMessage={errorMessage || 'Xác thực không thành công. Vui lòng thử lại.'}
         emptyTitle="Chưa có phiên làm việc"
         emptyMessage="Vui lòng nhập tài khoản email sinh viên để bắt đầu sử dụng Campus Marketplace."
+        emptyActionLabel="Điền thông tin đăng nhập"
+        onEmptyAction={handleRetry}
       >
         <ScrollView
           contentContainerStyle={styles.scrollContent}

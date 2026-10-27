@@ -1,14 +1,18 @@
 import React from 'react';
 import { StyleProp, ViewStyle } from 'react-native';
-import { ScreenViewState } from '@/types/listing';
+import { ScreenViewState } from '@/types/domain';
 import { ScreenState } from '@/components/primitives/ScreenState';
 
 export interface ScreenStateViewProps {
   state: ScreenViewState;
   onRetry?: () => void;
+  retryLabel?: string;
   loadingMessage?: string;
   emptyTitle?: string;
   emptyMessage?: string;
+  emptyActionLabel?: string;
+  onEmptyAction?: () => void;
+  errorTitle?: string;
   errorMessage?: string;
   children: React.ReactNode;
   style?: StyleProp<ViewStyle>;
@@ -24,9 +28,13 @@ export interface ScreenStateViewProps {
 export const ScreenStateView: React.FC<ScreenStateViewProps> = ({
   state,
   onRetry,
+  retryLabel,
   loadingMessage,
   emptyTitle,
   emptyMessage,
+  emptyActionLabel,
+  onEmptyAction,
+  errorTitle,
   errorMessage,
   children,
   style,
@@ -37,9 +45,13 @@ export const ScreenStateView: React.FC<ScreenStateViewProps> = ({
     <ScreenState
       state={state}
       onRetry={onRetry}
+      retryLabel={retryLabel}
       loadingMessage={loadingMessage}
       emptyTitle={emptyTitle}
       emptyMessage={emptyMessage}
+      emptyActionLabel={emptyActionLabel}
+      onEmptyAction={onEmptyAction}
+      errorTitle={errorTitle}
       errorMessage={errorMessage}
       style={style}
       showStateSwitcher={showStateSwitcher}

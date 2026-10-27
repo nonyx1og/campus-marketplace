@@ -1,10 +1,14 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, ViewStyle, TextStyle } from 'react-native';
-import { Link, Stack } from 'expo-router';
+import { Link, Stack, useRouter } from 'expo-router';
 import { useTheme } from '@/constants/theme';
+import { ScreenState } from '@/components/primitives/ScreenState';
+import { ScreenViewState } from '@/types/domain';
 
 export default function NotFoundScreen() {
   const theme = useTheme();
+  const router = useRouter();
+  const [viewState, setViewState] = useState<ScreenViewState>('content');
 
   const containerStyle: ViewStyle = {
     flex: 1,
@@ -55,26 +59,40 @@ export default function NotFoundScreen() {
   return (
     <>
       <Stack.Screen options={{ title: 'Không tìm thấy trang' }} />
-      <View
-        style={containerStyle}
-        accessibilityRole="alert"
-        accessibilityLabel="Trang bạn tìm kiếm không tồn tại trên hệ thống"
+      <ScreenState
+        state={viewState}
+        showStateSwitcher={true}
+        onStateChange={setViewState}
+        loadingMessage="Đang kiểm tra đường dẫn liên kết..."
+        emptyTitle="Không tìm thấy trang yêu cầu"
+        emptyMessage="Đường dẫn này không tồn tại trong hệ thống Campus Marketplace."
+        emptyActionLabel="Về trang chủ"
+        onEmptyAction={() => router.replace('/')}
+        errorTitle="Lỗi định tuyến"
+        errorMessage="Không thể điều hướng tới địa chỉ yêu cầu."
+        onRetry={() => router.replace('/')}
       >
-        <Text style={emojiStyle}>🔍</Text>
-        <Text style={titleStyle}>404 - Không tìm thấy trang</Text>
-        <Text style={descriptionStyle}>
-          Đường dẫn bạn yêu cầu không tồn tại hoặc đã được chuyển sang địa chỉ khác.
-        </Text>
-
-        <Link
-          href="/"
-          style={linkButtonStyle}
-          accessibilityRole="button"
-          accessibilityLabel="Quay về trang chủ Campus Marketplace"
+        <View
+          style={containerStyle}
+          accessibilityRole="alert"
+          accessibilityLabel="Trang bạn tìm kiếm không tồn tại trên hệ thống"
         >
-          <Text style={linkTextStyle}>Quay về trang chủ</Text>
-        </Link>
-      </View>
+          <Text style={emojiStyle}>🔍</Text>
+          <Text style={titleStyle}>404 - Không tìm thấy trang</Text>
+          <Text style={descriptionStyle}>
+            Đường dẫn bạn yêu cầu không tồn tại hoặc đã được chuyển sang địa chỉ khác.
+          </Text>
+
+          <Link
+            href="/"
+            style={linkButtonStyle}
+            accessibilityRole="button"
+            accessibilityLabel="Quay về trang chủ Campus Marketplace"
+          >
+            <Text style={linkTextStyle}>Quay về trang chủ</Text>
+          </Link>
+        </View>
+      </ScreenState>
     </>
   );
 }

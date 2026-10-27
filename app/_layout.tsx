@@ -10,11 +10,12 @@ import {
   selectIsRestoringSession,
   selectRestoreSession,
 } from '@/store/auth-store';
-import { Tokens } from '@/constants/tokens';
+import { ThemeProvider, useTheme } from '@/constants/theme';
 
 function NavigationGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const segments = useSegments();
+  const theme = useTheme();
   const isAuthenticated = useAuthStore(selectIsAuthenticated);
   const isRestoringSession = useAuthStore(selectIsRestoringSession);
   const restoreSession = useAuthStore(selectRestoreSession);
@@ -42,13 +43,16 @@ function NavigationGuard({ children }: { children: React.ReactNode }) {
   if (isRestoringSession) {
     return (
       <View
-        style={styles.splashContainer}
+        style={[styles.splashContainer, { backgroundColor: theme.colors.background }]}
         accessibilityRole="alert"
         accessibilityLabel="Đang khôi phục phiên đăng nhập từ SecureStore"
+        accessibilityLiveRegion="polite"
       >
-        <ActivityIndicator size="large" color={Tokens.colors.primary} />
-        <Text style={styles.splashText}>Campus Marketplace</Text>
-        <Text style={styles.splashSubtext}>Đang khôi phục phiên làm việc...</Text>
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+        <Text style={[styles.splashText, { color: theme.colors.text }]}>Campus Marketplace</Text>
+        <Text style={[styles.splashSubtext, { color: theme.colors.mutedText }]}>
+          Đang khôi phục phiên làm việc...
+        </Text>
       </View>
     );
   }
@@ -56,34 +60,41 @@ function NavigationGuard({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function RootAppContent() {
+  const theme = useTheme();
+
+  return (
+    <NavigationGuard>
+      <StatusBar style={theme.mode === 'dark' ? 'light' : 'dark'} />
+      <Slot />
+    </NavigationGuard>
+  );
+}
+
 export default function RootLayout() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <NavigationGuard>
-        <StatusBar style="dark" />
-        <Slot />
-      </NavigationGuard>
-    </QueryClientProvider>
+    <ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <RootAppContent />
+      </QueryClientProvider>
+    </ThemeProvider>
   );
 }
 
 const styles = StyleSheet.create({
   splashContainer: {
     flex: 1,
-    backgroundColor: Tokens.colors.background,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: Tokens.spacing.xl,
+    padding: 24,
   },
   splashText: {
-    marginTop: Tokens.spacing.lg,
-    fontSize: Tokens.typography.fontSizes.xl,
-    fontWeight: Tokens.typography.fontWeights.bold,
-    color: Tokens.colors.textPrimary,
+    marginTop: 16,
+    fontSize: 22,
+    fontWeight: '700',
   },
   splashSubtext: {
-    marginTop: Tokens.spacing.xs,
-    fontSize: Tokens.typography.fontSizes.sm,
-    color: Tokens.colors.textSecondary,
+    marginTop: 4,
+    fontSize: 14,
   },
 });

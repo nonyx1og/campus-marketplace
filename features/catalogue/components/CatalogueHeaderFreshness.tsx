@@ -78,8 +78,8 @@ export const CatalogueHeaderFreshness: React.FC<CatalogueHeaderFreshnessProps> =
   };
 
   const dismissBtnStyle: ViewStyle = {
-    minWidth: 32,
-    minHeight: 32,
+    minWidth: theme.layout.minTouchTarget,
+    minHeight: theme.layout.minTouchTarget,
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: theme.spacing.xs,

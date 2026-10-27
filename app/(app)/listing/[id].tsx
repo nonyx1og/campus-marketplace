@@ -219,7 +219,8 @@ export default function ListingDetailScreen() {
   };
 
   const roleChipStyle = (active: boolean): ViewStyle => ({
-    minHeight: 32,
+    minHeight: theme.layout.minTouchTarget,
+    minWidth: theme.layout.minTouchTarget,
     paddingHorizontal: theme.spacing.xs,
     paddingVertical: theme.spacing.xxs,
     borderRadius: theme.radius.xs,
