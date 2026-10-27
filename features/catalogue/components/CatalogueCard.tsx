@@ -139,7 +139,7 @@ export const CatalogueCard: React.FC<CatalogueCardProps> = ({ item }) => {
 
   return (
     <TouchableOpacity
-      accessibilityRole="button"
+      accessibilityRole="link"
       accessibilityLabel={`Sản phẩm: ${item.title}, Giá: ${formatVND(item.priceVnd)}, ${stockText}, Địa điểm: ${item.campusLocation}`}
       style={cardStyle}
       onPress={() => router.push(`/(app)/listing/${item.id}`)}
