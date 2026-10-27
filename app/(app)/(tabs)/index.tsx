@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -32,6 +32,7 @@ import { filterListings } from '@/features/catalogue/filterListings';
 import { CatalogueCard } from '@/features/catalogue/components/CatalogueCard';
 import { CatalogueSkeleton } from '@/features/catalogue/components/CatalogueSkeleton';
 import { OfflineBanner } from '@/features/catalogue/components/OfflineBanner';
+import { CatalogueHeaderFreshness } from '@/features/catalogue/components/CatalogueHeaderFreshness';
 import { clearCatalogueCache } from '@/lib/storage/catalogue-cache';
 import { ScreenViewState } from '@/types/domain';
 import { ListingItem } from '@/types/listing';
@@ -100,13 +101,45 @@ export default function CatalogueScreen() {
     return 'content';
   }, [demoStateOverride, isLoading, isError, sourceListings.length]);
 
+  // Pull-to-refresh state & error preservation
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
+  const [lastSuccessfulFetch, setLastSuccessfulFetch] = useState<string | null>(null);
+
+  // Sync lastSuccessfulFetch when query delivers valid lastUpdated
+  useEffect(() => {
+    if (lastUpdated) {
+      setLastSuccessfulFetch(lastUpdated);
+    }
+  }, [lastUpdated]);
+
+  const handlePullToRefresh = async () => {
+    setIsPullRefreshing(true);
+    setRefreshError(null);
+    try {
+      await refetch();
+      // On successful fetch: update timestamp and clear errors
+      const nowIso = new Date().toISOString();
+      setLastSuccessfulFetch(nowIso);
+    } catch (err: unknown) {
+      // PROMPT 9 RULE: Refresh error MUST NOT wipe currently displayed cache!
+      const errorMsg =
+        (err as { message?: string })?.message ||
+        'Không thể làm mới danh mục lúc này. Vẫn bảo toàn toàn bộ sản phẩm đã lưu.';
+      setRefreshError(errorMsg);
+    } finally {
+      setIsPullRefreshing(false);
+    }
+  };
+
   const handleRetry = () => {
     setDemoStateOverride(null);
-    void refetch();
+    void handlePullToRefresh();
   };
 
   const handleClearCacheForDemo = async () => {
     await clearCatalogueCache();
+    setLastSuccessfulFetch(null);
     void refetch();
   };
 
@@ -370,6 +403,17 @@ export default function CatalogueScreen() {
           >
             <Text style={demoChipTextStyle(false)}>🗑 Xóa Cache</Text>
           </TouchableOpacity>
+
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Mô phỏng lỗi khi kéo làm mới để kiểm tra bảo toàn cache"
+            style={demoChipStyle(false)}
+            onPress={() => {
+              setRefreshError('Mô phỏng lỗi đường truyền: Không thể fetch danh mục mới. Danh sách sản phẩm cache đang hiển thị được bảo toàn 100%!');
+            }}
+          >
+            <Text style={demoChipTextStyle(false)}>⚡ Test Lỗi Refresh</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -493,21 +537,29 @@ export default function CatalogueScreen() {
             keyExtractor={(item: ListingItem) => item.id}
             renderItem={({ item }) => <CatalogueCard item={item} />}
             ListHeaderComponent={
-              isOffline ? (
-                <OfflineBanner
-                  lastUpdated={lastUpdated}
-                  onRetry={handleRetry}
-                  isRetrying={isRefetching}
+              <>
+                {isOffline && (
+                  <OfflineBanner
+                    lastUpdated={lastSuccessfulFetch || lastUpdated}
+                    onRetry={handleRetry}
+                    isRetrying={isRefetching || isPullRefreshing}
+                  />
+                )}
+                <CatalogueHeaderFreshness
+                  lastUpdated={lastSuccessfulFetch || lastUpdated}
+                  isRefetching={isRefetching || isPullRefreshing}
+                  refreshError={refreshError}
+                  itemCount={filteredListings.length}
+                  onDismissError={() => setRefreshError(null)}
+                  onRetry={handlePullToRefresh}
                 />
-              ) : undefined
+              </>
             }
             contentContainerStyle={listContentStyle}
             refreshControl={
               <RefreshControl
-                refreshing={isRefetching}
-                onRefresh={() => {
-                  void refetch();
-                }}
+                refreshing={isRefetching || isPullRefreshing}
+                onRefresh={handlePullToRefresh}
                 tintColor={theme.colors.primary}
               />
             }

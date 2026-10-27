@@ -1,8 +1,8 @@
 import { apiClient } from './client';
 import { apiConfig, isRemoteApiConfigured } from './config';
 import { ListingItem, CatalogueQueryParams } from '@/types/listing';
-import { PaginatedResponse, ApiError } from '@/types/domain';
-import { getCatalogueCache } from '@/lib/storage/catalogue-cache';
+import { PaginatedResponse, ApiError, User } from '@/types/domain';
+import { getCatalogueCache, saveCatalogueCache } from '@/lib/storage/catalogue-cache';
 
 // Simulated offline toggle for team demo and test verification
 let simulatedOfflineMode = false;
@@ -24,8 +24,8 @@ export const MOCK_CATALOGUE_DATA: ListingItem[] = [
     priceMinor: 75000,
     stock: 4,
     category: 'Sách giáo trình',
-    sellerId: 'usr-002',
-    sellerName: 'Lê Hoàng Nam',
+    sellerId: 'usr_seller_02',
+    sellerName: 'Trần Thị Người Bán',
     campusLocation: 'Khu A - Toà Nhà Thư Viện',
     photoUri: 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=600&auto=format&fit=crop&q=80',
     createdAt: '2026-10-24T10:00:00Z',
@@ -432,4 +432,264 @@ export async function createListing(input: CreateListingInput): Promise<ListingI
 
   MOCK_CATALOGUE_DATA.unshift(newListing);
   return newListing;
+}
+
+/**
+ * Backend authorization enforcement:
+ * Updates the stock of a listing.
+ * Enforces:
+ * 1. User must be authenticated (401 Unauthorized)
+ * 2. User must be a seller or admin, and must be the owner of the listing if not admin (403 Forbidden)
+ * 3. Stock must be a non-negative integer (400 Validation Error)
+ */
+export async function updateListingStock(
+  listingId: string,
+  newStock: number,
+  currentUser?: User | null
+): Promise<ListingItem> {
+  // 1. Authenticate user
+  if (!currentUser) {
+    const err: ApiError = {
+      code: 'UNAUTHORIZED',
+      message: 'Yêu cầu đăng nhập: Bạn cần đăng nhập tài khoản để thực hiện thao tác quản lý kho.',
+      status: 401,
+      timestamp: new Date().toISOString(),
+    };
+    throw err;
+  }
+
+  // 2. Validate input
+  const stockInt = Math.round(Number(newStock));
+  if (isNaN(stockInt) || stockInt < 0) {
+    const err: ApiError = {
+      code: 'VALIDATION_ERROR',
+      message: 'Số lượng tồn kho phải là số nguyên không âm.',
+      status: 400,
+      timestamp: new Date().toISOString(),
+    };
+    throw err;
+  }
+
+  // 3. Find target listing
+  const listingIndex = MOCK_CATALOGUE_DATA.findIndex((item) => item.id === listingId);
+  const listing = listingIndex !== -1 ? MOCK_CATALOGUE_DATA[listingIndex] : null;
+
+  if (!listing) {
+    const err: ApiError = {
+      code: 'NOT_FOUND',
+      message: `Không tìm thấy tin đăng với mã "${listingId}".`,
+      status: 404,
+      timestamp: new Date().toISOString(),
+    };
+    throw err;
+  }
+
+  // 4. Enforce authorization: user must be seller and owner (or admin)
+  const isOwner = listing.sellerId === currentUser.id;
+  const isAdmin = currentUser.role === 'admin';
+  const isAuthorizedSeller = currentUser.role === 'seller' && isOwner;
+
+  if (!isAdmin && !isAuthorizedSeller) {
+    const err: ApiError = {
+      code: 'FORBIDDEN',
+      message: 'Từ chối quyền truy cập (403): Chỉ người bán sở hữu tin đăng này mới có quyền cập nhật tồn kho.',
+      status: 403,
+      timestamp: new Date().toISOString(),
+    };
+    throw err;
+  }
+
+  // 5. Remote API call if configured
+  if (isRemoteApiConfigured()) {
+    try {
+      const response = await apiClient.patch<ListingItem>(
+        `/listings/${listingId}/stock`,
+        { stock: stockInt },
+        { requiresAuth: true }
+      );
+      if (response && response.id) {
+        return response;
+      }
+    } catch (error) {
+      if (!apiConfig.isMockFallbackEnabled) {
+        throw error;
+      }
+    }
+  }
+
+  // 6. Local simulated server update with delay
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  const updatedListing: ListingItem = {
+    ...listing,
+    stock: stockInt,
+    updatedAt: new Date().toISOString(),
+  };
+
+  MOCK_CATALOGUE_DATA[listingIndex] = updatedListing;
+
+  // Also update persistent cache if item exists in cache
+  const cache = await getCatalogueCache();
+  if (cache && Array.isArray(cache.items)) {
+    const cacheIdx = cache.items.findIndex((i) => i.id === listingId);
+    if (cacheIdx !== -1) {
+      cache.items[cacheIdx] = updatedListing;
+      await saveCatalogueCache(cache);
+    }
+  }
+
+  return updatedListing;
+}
+
+export interface UpdateListingInput {
+  title?: string;
+  priceVnd?: number;
+  stock?: number;
+  description?: string;
+  category?: string;
+  campusLocation?: string;
+}
+
+/**
+ * Backend authorization enforcement:
+ * Updates the details of a listing (e.g. price, stock, title).
+ * Enforces 401 Unauthorized, 403 Forbidden, and 400 Validation.
+ */
+export async function updateListing(
+  listingId: string,
+  updates: UpdateListingInput,
+  currentUser?: User | null
+): Promise<ListingItem> {
+  // 1. Authenticate user
+  if (!currentUser) {
+    const err: ApiError = {
+      code: 'UNAUTHORIZED',
+      message: 'Yêu cầu đăng nhập: Bạn cần đăng nhập tài khoản để chỉnh sửa tin đăng.',
+      status: 401,
+      timestamp: new Date().toISOString(),
+    };
+    throw err;
+  }
+
+  // 2. Find target listing
+  const listingIndex = MOCK_CATALOGUE_DATA.findIndex((item) => item.id === listingId);
+  const listing = listingIndex !== -1 ? MOCK_CATALOGUE_DATA[listingIndex] : null;
+
+  if (!listing) {
+    const err: ApiError = {
+      code: 'NOT_FOUND',
+      message: `Không tìm thấy tin đăng với mã "${listingId}".`,
+      status: 404,
+      timestamp: new Date().toISOString(),
+    };
+    throw err;
+  }
+
+  // 3. Enforce authorization
+  const isOwner = listing.sellerId === currentUser.id;
+  const isAdmin = currentUser.role === 'admin';
+  const isAuthorizedSeller = currentUser.role === 'seller' && isOwner;
+
+  if (!isAdmin && !isAuthorizedSeller) {
+    const err: ApiError = {
+      code: 'FORBIDDEN',
+      message: 'Từ chối quyền truy cập (403): Chỉ người bán sở hữu tin đăng này mới có quyền chỉnh sửa thông tin.',
+      status: 403,
+      timestamp: new Date().toISOString(),
+    };
+    throw err;
+  }
+
+  // 4. Validate updates
+  const patch: Partial<ListingItem> = {};
+
+  if (updates.title !== undefined) {
+    if (!updates.title.trim()) {
+      const err: ApiError = {
+        code: 'VALIDATION_ERROR',
+        message: 'Tiêu đề tin đăng không được để trống.',
+        status: 400,
+        timestamp: new Date().toISOString(),
+      };
+      throw err;
+    }
+    patch.title = updates.title.trim();
+  }
+
+  if (updates.priceVnd !== undefined) {
+    const priceInt = Math.round(Number(updates.priceVnd));
+    if (isNaN(priceInt) || priceInt <= 0) {
+      const err: ApiError = {
+        code: 'VALIDATION_ERROR',
+        message: 'Giá bán phải là số nguyên dương tính theo VND.',
+        status: 400,
+        timestamp: new Date().toISOString(),
+      };
+      throw err;
+    }
+    patch.priceVnd = priceInt;
+    patch.priceMinor = priceInt;
+  }
+
+  if (updates.stock !== undefined) {
+    const stockInt = Math.round(Number(updates.stock));
+    if (isNaN(stockInt) || stockInt < 0) {
+      const err: ApiError = {
+        code: 'VALIDATION_ERROR',
+        message: 'Số lượng tồn kho phải là số nguyên không âm.',
+        status: 400,
+        timestamp: new Date().toISOString(),
+      };
+      throw err;
+    }
+    patch.stock = stockInt;
+  }
+
+  if (updates.description !== undefined) {
+    patch.description = updates.description.trim();
+  }
+  if (updates.category !== undefined) {
+    patch.category = updates.category;
+  }
+  if (updates.campusLocation !== undefined) {
+    patch.campusLocation = updates.campusLocation;
+  }
+
+  // 5. Remote API call if configured
+  if (isRemoteApiConfigured()) {
+    try {
+      const response = await apiClient.put<ListingItem>(
+        `/listings/${listingId}`,
+        patch,
+        { requiresAuth: true }
+      );
+      if (response && response.id) {
+        return response;
+      }
+    } catch (error) {
+      if (!apiConfig.isMockFallbackEnabled) {
+        throw error;
+      }
+    }
+  }
+
+  // 6. Local update
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  const updatedListing: ListingItem = {
+    ...listing,
+    ...patch,
+    updatedAt: new Date().toISOString(),
+  };
+
+  MOCK_CATALOGUE_DATA[listingIndex] = updatedListing;
+
+  const cache = await getCatalogueCache();
+  if (cache && Array.isArray(cache.items)) {
+    const cacheIdx = cache.items.findIndex((i) => i.id === listingId);
+    if (cacheIdx !== -1) {
+      cache.items[cacheIdx] = updatedListing;
+      await saveCatalogueCache(cache);
+    }
+  }
+
+  return updatedListing;
 }

@@ -26,6 +26,8 @@ import { queryClient } from '@/lib/query-client';
 import { formatVND } from '@/lib/currency';
 import { ListingItem } from '@/types/listing';
 import { ScreenViewState } from '@/types/domain';
+import { NotificationPermissionBanner } from '@/features/notifications/components/NotificationPermissionBanner';
+import { checkAndNotifyFavoritePriceChanges } from '@/features/notifications/notificationService';
 
 export type FavoriteListingStatus = 'available' | 'out_of_stock' | 'deleted';
 
@@ -148,6 +150,43 @@ export default function FavoritesScreen() {
     }
     return 'content';
   })();
+
+  // Extract available listings for price drop tracking
+  const availableListings = derivedFavorites
+    .map((d) => d.item)
+    .filter((x): x is ListingItem => x !== null);
+
+  // Background price check when favorites data arrives
+  useEffect(() => {
+    if (availableListings.length > 0) {
+      void checkAndNotifyFavoritePriceChanges(favoriteIds, availableListings);
+    }
+  }, [availableListings.length, favoriteIds]);
+
+  const handleSimulatedPriceDrop = async () => {
+    if (availableListings.length === 0) {
+      Alert.alert('Chưa có sản phẩm', 'Vui lòng lưu ít nhất 1 sản phẩm còn hàng để thử nghiệm thông báo giảm giá.');
+      return;
+    }
+
+    const target = availableListings[0];
+    const currentPrice = target.priceVnd;
+    const newPrice = Math.max(10000, currentPrice - 20000);
+
+    // Apply simulated discount
+    target.priceVnd = newPrice;
+    target.priceMinor = newPrice;
+
+    // Trigger price change evaluation
+    const notifs = await checkAndNotifyFavoritePriceChanges(favoriteIds, availableListings);
+    await refetch();
+    if (notifs.length > 0) {
+      Alert.alert(
+        'Đã giảm giá thành công!',
+        `Đã hạ giá "${target.title}" từ ${formatVND(currentPrice)} xuống ${formatVND(newPrice)}.\nThông báo giảm giá cục bộ đã được kích hoạt!`
+      );
+    }
+  };
 
   const handleCardPress = (entry: DerivedFavoriteItem) => {
     if (entry.status === 'deleted' || !entry.item) {
@@ -275,6 +314,13 @@ export default function FavoritesScreen() {
           data={derivedFavorites}
           keyExtractor={(entry) => entry.id}
           contentContainerStyle={listContentStyle}
+          ListHeaderComponent={
+            <NotificationPermissionBanner
+              favoriteIds={favoriteIds}
+              derivedListings={availableListings}
+              onTriggerSimulatedDrop={handleSimulatedPriceDrop}
+            />
+          }
           refreshControl={
             <RefreshControl
               refreshing={isRefetching}

@@ -72,27 +72,76 @@ Trên màn hình Đăng nhập (`app/(auth)/sign-in.tsx`), ứng dụng đã tí
 ## 5. Các lệnh kiểm tra & Bộ Test tự động
 
 ```bash
-# 1. Chạy toàn bộ bộ kiểm thử tự động
+# 1. Chạy toàn bộ 8 bộ kiểm thử tự động (157/157 tests green)
 npm test
 
-# 2. Chạy riêng bộ kiểm thử Giỏ hàng & Tồn kho
+# 2. Chạy riêng bộ kiểm thử Seller/Buyer View & Backend Auth (Prompt 9)
+npm run test:seller-buyer
+
+# 3. Chạy riêng bộ kiểm thử Thông báo cục bộ giảm giá (Prompt 9)
+npm run test:notifications
+
+# 4. Chạy riêng bộ kiểm thử Pull-to-Refresh & Cache (Prompt 9)
+npm run test:pull-to-refresh
+
+# 5. Chạy riêng bộ kiểm thử Giỏ hàng & Tồn kho (Prompt 8)
 npm run test:cart
 
-# 3. Chạy riêng bộ kiểm thử Danh sách yêu thích
+# 6. Chạy riêng bộ kiểm thử Danh sách yêu thích (Prompt 7)
 npm run test:favorites
 
-# 4. Chạy riêng bộ kiểm thử Listing Detail & Nén ảnh
+# 7. Chạy riêng bộ kiểm thử Listing Detail & Nén ảnh (Prompt 6)
 npm run test:listing
 
-# 5. Chạy riêng bộ kiểm thử Tìm kiếm & Lọc danh mục
+# 8. Chạy riêng bộ kiểm thử Tìm kiếm & Lọc danh mục (Prompt 5)
 npm run test:filter
 
-# 6. Kiểm tra tuân thủ mã màu Design Token và độ tương phản WCAG AA (>= 4.5:1)
+# 9. Kiểm tra tuân thủ mã màu Design Token và độ tương phản WCAG AA (>= 4.5:1)
 npm run audit:theme
 
-# 7. Kiểm tra tĩnh TypeScript strict
+# 10. Kiểm tra tĩnh TypeScript strict
 npm run typecheck
 
-# 8. Chạy toàn bộ kiểm tra tổng thể cùng lúc
+# 11. Chạy toàn bộ kiểm tra tổng thể cùng lúc
 npm run check:all
 ```
+
+---
+
+## 6. PROMPT 9 — CÁC TÍNH NĂNG SHOULD HAVE ĐỂ VƯỢT MỐC 8
+
+### 1. Phân tách Giao diện Seller / Buyer (Role-Based Detail View)
+- **Tự động nhận diện vai trò**: Cùng một màn hình chi tiết sản phẩm (`app/(app)/listing/[id].tsx`), giao diện và các hành động tự động thích ứng theo vai trò tài khoản đăng nhập:
+  - **Buyer View**: Hiển thị nút "Yêu thích" (❤️ / 🤍), nút "Thêm vào giỏ" (tự động khóa khi hết hàng `stock === 0`) và nút "Nhắn người bán".
+  - **Seller View (Chủ tin đăng)**: Ẩn nút "Yêu thích" và "Thêm vào giỏ", hiển thị huy hiệu `🏷️ Tin đăng của bạn`, bổ sung bảng điều khiển Quản lý tồn kho với bộ đếm `[-] / [+]`, phím đặt nhanh `⚡ Đặt hết hàng (0)` và `⚡ Nhập thêm (+5)`.
+- **Thực thi phân quyền tại Backend (Authorization Enforcement)**:
+  - Backend API (`updateListingStock`, `updateListing` trong `lib/api/catalogue.ts`) thực thi kiểm tra chặt chẽ:
+    - Chưa đăng nhập -> Trả về `401 UNAUTHORIZED`.
+    - Người mua hoặc Người bán khác cố tình sửa kho hàng -> Trả về `403 FORBIDDEN`.
+    - Số lượng kho âm -> Trả về `400 VALIDATION_ERROR`.
+  - Có nút thử nghiệm `🛡️ Kiểm thử Backend 403` để chứng minh trên UI rằng backend thực sự từ chối yêu cầu trái phép.
+- **Role Preview Switcher**: Hỗ trợ thanh chuyển đổi chế độ xem `Tự động | Người mua | Người bán` phục vụ chấm điểm viva nhanh chóng.
+
+### 2. Thông báo Cục bộ Giảm Giá (Local Notification)
+- **Theo dõi lịch sử giá**: Lưu vết giá sản phẩm yêu thích trong `AsyncStorage` (`campus_marketplace_favorite_prices`).
+- **Phát hiện giảm giá tức thì**: Khi giá sản phẩm người dùng đã lưu giảm xuống, hệ thống tạo thông báo cục bộ kèm số tiền tiết kiệm được tính bằng số nguyên VND.
+- **Quy tắc Chống Spam Tuyệt Đối**:
+  - Khi giá sản phẩm không thay đổi -> Hoàn toàn không phát sinh thông báo lặp lại gây phiền toái.
+  - Khi lưu sản phẩm lần đầu -> Chỉ ghi nhận mức giá cơ sở, không spam thông báo.
+- **Quy trình Xin quyền Minh bạch & Xử lý Từ chối**:
+  - Hiển thị banner xin quyền trên màn hình Yêu thích (`NotificationPermissionBanner`).
+  - Khi người dùng bấm "Để sau (Từ chối)", trạng thái `denied` được ghi nhớ, không tiếp tục quấy rầy. Người dùng có thể bấm "Bật lại thông báo" bất cứ lúc nào.
+  - Cung cấp nút `⚡ Mô phỏng giảm giá (Test Notif)` và `🔍 Quét giá (Test không spam)` cho giám khảo viva.
+- **Giới hạn nền tảng (Platform Limitations)**:
+  - Nền tảng Web: Sử dụng API trình duyệt `window.Notification` gửi thông báo desktop thực tế.
+  - Nền tảng Mobile (Expo Go): Do xung đột peer dependency npm giữa React 19 và native package `expo-notifications`, hệ thống tích hợp Banner / In-App Alert chuyên dụng và lưu trữ lịch sử notification, đồng thời ghi rõ mã `TODO` kiến trúc cho bản build standalone EAS.
+
+### 3. Kéo để Làm mới & Bảo toàn Cache (Pull-to-Refresh)
+- **Hỗ trợ kéo làm mới mượt mà**: FlatList tích hợp `RefreshControl` chuẩn token màu primary.
+- **Hiển thị thời gian cập nhật thành công**:
+  - Thanh trạng thái `🕒 Cập nhật lần cuối: HH:mm:ss DD/MM/YYYY` hiển thị thời gian sau mỗi lần fetch thành công.
+  - Không bị mất timestamp khi mạng chập chờn.
+- **Bảo toàn Cache khi gặp lỗi (Cache Preservation on Error)**:
+  - Khi kéo làm mới trong lúc mất mạng hoặc máy chủ ngoại tuyến, hệ thống bắt lỗi an toàn và hiển thị cảnh báo đỏ thân thiện.
+  - **Toàn bộ danh sách sản phẩm và cache hiện tại được giữ nguyên vẹn 100%, không bị xóa trắng hay mất dữ liệu.**
+  - Nút `⚡ Test Lỗi Refresh` trên thanh Demo giúp kiểm chứng tính năng bảo toàn cache chỉ với 1 chạm.
