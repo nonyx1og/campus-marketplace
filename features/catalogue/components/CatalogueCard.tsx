@@ -12,6 +12,7 @@ import { useRouter } from 'expo-router';
 import { useTheme } from '@/constants/theme';
 import { ListingItem } from '@/types/listing';
 import { formatVND } from '@/lib/currency';
+import { FavoriteToggleButton } from '@/components/favorites';
 
 export interface CatalogueCardProps {
   item: ListingItem;
@@ -45,6 +46,14 @@ export const CatalogueCard: React.FC<CatalogueCardProps> = ({ item }) => {
     marginBottom: theme.spacing.sm,
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'relative',
+  };
+
+  const favoriteOverlayStyle: ViewStyle = {
+    position: 'absolute',
+    top: theme.spacing.xs,
+    right: theme.spacing.xs,
+    zIndex: 10,
   };
 
   const imageStyle: ImageStyle = {
@@ -136,7 +145,7 @@ export const CatalogueCard: React.FC<CatalogueCardProps> = ({ item }) => {
       onPress={() => router.push(`/(app)/listing/${item.id}`)}
       activeOpacity={0.75}
     >
-      {/* Product Image */}
+      {/* Product Image & Favorite Toggle */}
       <View style={imageContainerStyle}>
         {photoUrl && !imageError ? (
           <Image
@@ -149,6 +158,10 @@ export const CatalogueCard: React.FC<CatalogueCardProps> = ({ item }) => {
         ) : (
           <Text style={fallbackTextStyle}>📦 Ảnh minh họa</Text>
         )}
+
+        <View style={favoriteOverlayStyle}>
+          <FavoriteToggleButton listingId={item.id} listingTitle={item.title} />
+        </View>
       </View>
 
       {/* Badges: Category & Stock/Availability */}

@@ -18,7 +18,7 @@ import { AppButton } from '@/components/primitives/AppButton';
 import { fetchListingById } from '@/lib/api/catalogue';
 import { formatVND } from '@/lib/currency';
 import { useCartStore } from '@/store/cart-store';
-import { useFavoritesStore, selectIsFavorite } from '@/store/favorites-store';
+import { useFavoritesStore, useIsFavorite } from '@/store/favorites-store';
 import { ScreenViewState } from '@/types/domain';
 
 export default function ListingDetailScreen() {
@@ -32,7 +32,7 @@ export default function ListingDetailScreen() {
   // Store hooks
   const addToCart = useCartStore((state) => state.addToCart);
   const toggleFavorite = useFavoritesStore((state) => state.toggleFavorite);
-  const isFavorite = useFavoritesStore(selectIsFavorite(id || ''));
+  const isFavorite = useIsFavorite(id || '');
 
   // TanStack Query for dynamic detail fetching & caching
   const {
@@ -313,6 +313,7 @@ export default function ListingDetailScreen() {
 
                 <TouchableOpacity
                   accessibilityRole="button"
+                  accessibilityState={{ selected: isFavorite }}
                   accessibilityLabel={
                     isFavorite
                       ? `Bỏ lưu sản phẩm ${item.title} khỏi danh sách yêu thích`

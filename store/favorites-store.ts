@@ -1,31 +1,75 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ListingItem } from '@/types/listing';
 
-export const FAVORITES_STORAGE_KEY = 'campus_marketplace_favorites';
+export const FAVORITES_STORAGE_KEY = 'campus_marketplace_favorite_ids';
+const LEGACY_FAVORITES_STORAGE_KEY = 'campus_marketplace_favorites';
+
+/**
+ * Helper to safely extract a string listing ID from either a string ID
+ * or an object containing an `id` property.
+ */
+export function extractListingId(input: unknown): string {
+  if (typeof input === 'string') return input.trim();
+  if (input && typeof input === 'object' && 'id' in input) {
+    const id = (input as { id: unknown }).id;
+    if (typeof id === 'string') return id.trim();
+  }
+  return '';
+}
 
 export interface FavoritesState {
-  favorites: ListingItem[];
+  /**
+   * Minimal client state: only stores the set of favorite listing IDs.
+   * Listing details are never duplicated in the client store; they are
+   * queried or derived from TanStack Query / cache / API on demand.
+   */
+  favoriteIds: string[];
   isHydrated: boolean;
-  addFavorite: (item: ListingItem) => Promise<void>;
-  removeFavorite: (id: string) => Promise<void>;
-  toggleFavorite: (item: ListingItem) => Promise<void>;
+  addFavorite: (idOrItem: string | { id: string }) => Promise<void>;
+  removeFavorite: (idOrItem: string | { id: string }) => Promise<void>;
+  toggleFavorite: (idOrItem: string | { id: string }) => Promise<void>;
   isFavorite: (id: string) => boolean;
   hydrateFavorites: () => Promise<void>;
   clearFavorites: () => Promise<void>;
 }
 
 export const useFavoritesStore = create<FavoritesState>((set, get) => ({
-  favorites: [],
+  favoriteIds: [],
   isHydrated: false,
 
   hydrateFavorites: async () => {
     try {
-      const stored = await AsyncStorage.getItem(FAVORITES_STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored) as ListingItem[];
+      let raw = await AsyncStorage.getItem(FAVORITES_STORAGE_KEY);
+
+      // Gracefully migrate legacy storage key if present
+      if (!raw) {
+        const legacyRaw = await AsyncStorage.getItem(LEGACY_FAVORITES_STORAGE_KEY);
+        if (legacyRaw) {
+          try {
+            const legacyParsed = JSON.parse(legacyRaw);
+            if (Array.isArray(legacyParsed)) {
+              const extracted = legacyParsed
+                .map(extractListingId)
+                .filter((id): id is string => Boolean(id));
+              const unique = Array.from(new Set(extracted));
+              set({ favoriteIds: unique, isHydrated: true });
+              await AsyncStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(unique));
+              return;
+            }
+          } catch {
+            // Ignore legacy parse failure
+          }
+        }
+      }
+
+      if (raw) {
+        const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
-          set({ favorites: parsed, isHydrated: true });
+          const validated = parsed
+            .map(extractListingId)
+            .filter((id): id is string => Boolean(id));
+          const unique = Array.from(new Set(validated));
+          set({ favoriteIds: unique, isHydrated: true });
           return;
         }
       }
@@ -35,12 +79,15 @@ export const useFavoritesStore = create<FavoritesState>((set, get) => ({
     set({ isHydrated: true });
   },
 
-  addFavorite: async (item: ListingItem) => {
-    const current = get().favorites;
-    if (current.some((f) => f.id === item.id)) return;
+  addFavorite: async (idOrItem: string | { id: string }) => {
+    const id = extractListingId(idOrItem);
+    if (!id) return;
 
-    const updated = [item, ...current];
-    set({ favorites: updated });
+    const current = get().favoriteIds;
+    if (current.includes(id)) return;
+
+    const updated = [id, ...current];
+    set({ favoriteIds: updated });
     try {
       await AsyncStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(updated));
     } catch {
@@ -48,9 +95,13 @@ export const useFavoritesStore = create<FavoritesState>((set, get) => ({
     }
   },
 
-  removeFavorite: async (id: string) => {
-    const updated = get().favorites.filter((f) => f.id !== id);
-    set({ favorites: updated });
+  removeFavorite: async (idOrItem: string | { id: string }) => {
+    const id = extractListingId(idOrItem);
+    if (!id) return;
+
+    const current = get().favoriteIds;
+    const updated = current.filter((x) => x !== id);
+    set({ favoriteIds: updated });
     try {
       await AsyncStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(updated));
     } catch {
@@ -58,32 +109,79 @@ export const useFavoritesStore = create<FavoritesState>((set, get) => ({
     }
   },
 
-  toggleFavorite: async (item: ListingItem) => {
-    const isFav = get().favorites.some((f) => f.id === item.id);
+  toggleFavorite: async (idOrItem: string | { id: string }) => {
+    const id = extractListingId(idOrItem);
+    if (!id) return;
+
+    const isFav = get().favoriteIds.includes(id);
     if (isFav) {
-      await get().removeFavorite(item.id);
+      await get().removeFavorite(id);
     } else {
-      await get().addFavorite(item);
+      await get().addFavorite(id);
     }
   },
 
   isFavorite: (id: string) => {
-    return get().favorites.some((f) => f.id === id);
+    const cleanId = extractListingId(id);
+    return get().favoriteIds.includes(cleanId);
   },
 
   clearFavorites: async () => {
-    set({ favorites: [] });
+    set({ favoriteIds: [] });
     try {
       await AsyncStorage.removeItem(FAVORITES_STORAGE_KEY);
+      await AsyncStorage.removeItem(LEGACY_FAVORITES_STORAGE_KEY);
     } catch {
       // Persistence error handled gracefully
     }
   },
 }));
 
-// Selectors for optimized re-renders
-export const selectFavorites = (state: FavoritesState): ListingItem[] => state.favorites;
-export const selectFavoritesCount = (state: FavoritesState): number => state.favorites.length;
-export const selectIsFavorite = (id: string) => (state: FavoritesState): boolean =>
-  state.favorites.some((f) => f.id === id);
+// ============================================================================
+// SELECTORS & CUSTOM HOOKS (Ensures zero duplicate state & optimized re-renders)
+// ============================================================================
+
+/**
+ * Selector for the minimal array of favorite listing IDs.
+ */
+export const selectFavoriteIds = (state: FavoritesState): string[] => state.favoriteIds;
+
+/**
+ * Selector for total number of favorites.
+ */
+export const selectFavoritesCount = (state: FavoritesState): number => state.favoriteIds.length;
+
+/**
+ * Selector factory checking if a specific listing is favorited.
+ */
+export const selectIsFavorite =
+  (id: string) =>
+  (state: FavoritesState): boolean =>
+    state.favoriteIds.includes(extractListingId(id));
+
+/**
+ * Selector checking if the favorites store has finished hydration from storage.
+ */
 export const selectIsFavoritesHydrated = (state: FavoritesState): boolean => state.isHydrated;
+
+/**
+ * Custom React hook returning whether a listing is favorited.
+ * Uses fine-grained Zustand selector so the component only re-renders when
+ * this specific listing's favorite status changes.
+ */
+export function useIsFavorite(listingId: string): boolean {
+  const cleanId = extractListingId(listingId);
+  return useFavoritesStore((state) => state.favoriteIds.includes(cleanId));
+}
+
+/**
+ * Custom React hook returning the full array of favorite listing IDs.
+ */
+export function useFavoriteIds(): string[] {
+  return useFavoritesStore(selectFavoriteIds);
+}
+
+/**
+ * Backward-compatible selector alias.
+ */
+export const selectFavorites = (state: FavoritesState): string[] => state.favoriteIds;

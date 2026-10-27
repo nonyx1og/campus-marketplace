@@ -72,22 +72,25 @@ Trên màn hình Đăng nhập (`app/(auth)/sign-in.tsx`), ứng dụng đã tí
 ## 5. Các lệnh kiểm tra & Bộ Test tự động
 
 ```bash
-# 1. Chạy bộ kiểm thử tự động (Pure Logic, Auth, Session, Catalogue Offline, Search & Filter, Listing Detail & Create Listing)
+# 1. Chạy toàn bộ bộ kiểm thử tự động (Pure Logic, Auth, Session, Catalogue Offline, Search & Filter, Listing Detail & Create Listing, Favourites State & Persistence)
 npm test
 
-# 2. Chạy riêng bộ kiểm thử Listing Detail, Nén ảnh & Tạo tin đăng (Prompt 6)
+# 2. Chạy riêng bộ kiểm thử Favourites Shared State & Persistence (Prompt 7)
+npm run test:favorites
+
+# 3. Chạy riêng bộ kiểm thử Listing Detail, Nén ảnh & Tạo tin đăng (Prompt 6)
 npm run test:listing
 
-# 3. Chạy riêng bộ kiểm thử tính năng Tìm kiếm & Lọc Category (Prompt 5)
+# 4. Chạy riêng bộ kiểm thử tính năng Tìm kiếm & Lọc Category (Prompt 5)
 npm run test:filter
 
-# 4. Kiểm tra tuân thủ mã màu Design Token và độ tương phản WCAG AA (>= 4.5:1)
+# 5. Kiểm tra tuân thủ mã màu Design Token và độ tương phản WCAG AA (>= 4.5:1)
 npm run audit:theme
 
-# 5. Kiểm tra tĩnh TypeScript strict
+# 6. Kiểm tra tĩnh TypeScript strict
 npm run typecheck
 
-# 6. Chạy toàn bộ kiểm tra tổng thể cùng lúc
+# 7. Chạy toàn bộ kiểm tra tổng thể cùng lúc
 npm run check:all
 ```
 
@@ -123,3 +126,55 @@ npm run check:all
    - Xem đầy đủ 4 trạng thái (loading, content, empty, error có nút thử lại).
    - Kiểm tra hiển thị trạng thái stock: sản phẩm có hàng hiển thị badge xanh `Còn hàng`, sản phẩm `prod-106` hiển thị badge đỏ `Hết hàng / Tạm ngưng` và nút "Thêm vào giỏ" bị vô hiệu hoá.
    - Bấm nút **"Yêu thích"** (icon trái tim): trạng thái lập tức đồng bộ sang tab **Yêu thích (Favorites)** thông qua shared store Zustand.
+
+---
+
+## 7. Kiến trúc Danh sách Yêu thích (Favourites: Shared State, Persistence & Hai màn hình - Prompt 7)
+
+### 1. Nguyên lý Kiến trúc & Dữ liệu Tối thiểu (Zero State Duplication)
+- **Tối giản State Client**: Zustand store (`store/favorites-store.ts`) chỉ lưu trữ duy nhất tập hợp mã định danh sản phẩm yêu thích: `favoriteIds: string[]`.
+- **Tuyệt đối không lưu lặp lại đối tượng `ListingItem` vào store client**: Toàn bộ chi tiết món đồ (tiêu đề, giá bán, ảnh, người bán, tồn kho) được truy vấn hoặc dẫn xuất động từ TanStack Query / cache / API khi cần hiển thị trên màn hình Yêu thích (`useQuery` với queryKey `['favorites', 'details', favoriteIds]`).
+- **Hiệu năng tối ưu**: Cung cấp selectors chuyên biệt (`selectFavoriteIds`, `selectFavoritesCount`, `selectIsFavorite(id)`) và React hook `useIsFavorite(listingId)`. Khi một món đồ thay đổi trạng thái yêu thích, chỉ đúng component nút bấm đó re-render, toàn bộ danh sách Catalogue FlatList không bị re-render thừa.
+
+### 2. Lưu trữ Bền vững (Persistence qua App Restart)
+- Sử dụng `@react-native-async-storage/async-storage` với khóa lưu trữ chuẩn `campus_marketplace_favorite_ids`.
+- Cơ chế khởi động tự động (`hydrateFavorites`): Khôi phục mảng `favoriteIds` ngay khi mở ứng dụng.
+- Tương thích ngược: Tự động phát hiện và chuyển đổi (migration) định dạng cũ nếu có, loại bỏ các ID trùng lặp, bảo vệ chống crash khi dữ liệu lưu trữ bị lỗi/corrupt JSON.
+
+### 3. Đồng bộ Trạng thái Giữa Hai Màn hình Riêng biệt
+- **Màn hình 1 - Thẻ sản phẩm Catalogue (`CatalogueCard.tsx`)**:
+  - Tích hợp nút tim yêu thích `FavoriteToggleButton` nằm nổi bật ở góc trên bên phải ảnh minh hoạ.
+  - Xử lý chặn sự kiện nổi bọt (`e.stopPropagation()`) để khi bấm nút tim không kích hoạt điều hướng mở chi tiết thẻ.
+- **Màn hình 2 - Chi tiết sản phẩm (`listing/[id].tsx`)**:
+  - Nút bấm yêu thích dạng pill với biểu tượng trái tim và nhãn trạng thái (`Đã lưu` / `Yêu thích`).
+  - Đồng bộ tức thì 2 chiều: Toggle trên Catalogue Card thì Listing Detail cập nhật ngay, và ngược lại.
+
+### 4. Màn hình Favorites (`app/(app)/(tabs)/favorites.tsx`) & Xử lý An toàn
+- Dẫn xuất danh sách chi tiết an toàn từ cache hoặc remote API qua TanStack Query.
+- **Xử lý món đồ không còn khả dụng hoặc đã bị xoá**:
+  - Sản phẩm còn hàng (`stock > 0`): Badge xanh `Còn hàng`, cho phép xem chi tiết và mua hàng.
+  - Sản phẩm hết hàng (`stock === 0`): Badge đỏ `Hết hàng / Tạm ngưng`, cảnh báo rõ ràng.
+  - Sản phẩm đã bị xóa khỏi sàn (`item === null`): Hiển thị thông báo `Đã bị xoá / Không khả dụng` kèm nút bấm `Bỏ lưu` để sinh viên dọn dẹp danh mục mà không làm sập ứng dụng (No white screen crash).
+- **Phủ đủ 4 trạng thái giao diện**:
+  - `loading`: Skeleton / spinner tải danh sách khi đang hydrate hoặc fetch dữ liệu.
+  - `empty`: Giao diện trống thân thiện ("Bạn chưa lưu tin đăng nào") kèm nút CTA "Khám phá chợ ngay".
+  - `error`: Thông báo lỗi mạng kèm nút **"Thử lại"** (`onRetry`).
+  - `content`: Danh sách FlatList mượt mà với tính năng kéo để làm mới (`RefreshControl`).
+
+### 5. Chính sách Lưu trữ Favourites khi Đăng xuất (Sign-out Policy)
+> **CHÍNH SÁCH ĐÃ CHỐT CỦA NHÓM:**
+> - **Quy định**: Khi người dùng Đăng xuất (`signOut`), danh sách sản phẩm yêu thích (`favoriteIds`) **ĐƯỢC GIỮ LẠI TRÊN THIẾT BỊ (Device-level Persistence)** và **KHÔNG BỊ XÓA**.
+> - **Cơ sở kỹ thuật & Trải nghiệm Người dùng (UX)**:
+>   1. **Dữ liệu phi nhạy cảm**: Danh sách yêu thích chỉ chứa các chuỗi ID tham chiếu công khai, không chứa thông tin riêng tư hay tài chính.
+>   2. **Trải nghiệm sinh viên liền mạch**: Sinh viên thường lưu lại các cuốn giáo trình cần mua trước khi đăng nhập hoặc khi chuyển đổi giữa các tài khoản kiểm thử (Buyer / Seller). Việc giữ lại giúp họ không bị mất danh sách đã chọn.
+>   3. **Bảo mật tuyệt đối**: Toàn bộ dữ liệu nhạy cảm (JWT Token, User Session, Refresh Token) được lưu trữ riêng trong `expo-secure-store` và được **xóa triệt để** khi đăng xuất (`clearSensitiveUserData`), đồng thời TanStack Query cache người dùng bị xoá sạch (`queryClient.clear()`).
+>   4. **Quyền chủ động của người dùng**: Người dùng có thể tự xóa từng món đồ bằng nút `Bỏ lưu` hoặc sử dụng hàm `clearFavorites()` khi muốn xóa sạch hoàn toàn danh sách yêu thích trên thiết bị.
+
+### 6. Khả năng Tiếp cận (Accessibility WCAG AA)
+- Mọi nút toggle yêu thích và nút bỏ lưu đều đạt chuẩn touch target tối thiểu **>= 44×44px** (`theme.layout.minTouchTarget`).
+- `accessibilityRole="button"`.
+- `accessibilityState={{ selected: isFavorite }}`.
+- Nhãn `accessibilityLabel` biến đổi động theo ngữ cảnh trạng thái:
+  - Khi chưa yêu thích: `"Lưu sản phẩm [Tên sản phẩm] vào danh sách yêu thích"`.
+  - Khi đã yêu thích: `"Bỏ lưu sản phẩm [Tên sản phẩm] khỏi danh sách yêu thích"`.
+

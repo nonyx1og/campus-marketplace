@@ -1,37 +1,170 @@
-import React, { useEffect } from 'react';
-import { View, Text, FlatList, TouchableOpacity, ViewStyle, TextStyle } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  FlatList,
+  TouchableOpacity,
+  Image,
+  RefreshControl,
+  Alert,
+  ViewStyle,
+  TextStyle,
+  ImageStyle,
+} from 'react-native';
 import { useRouter } from 'expo-router';
+import { useQuery } from '@tanstack/react-query';
 import { useTheme } from '@/constants/theme';
 import { ScreenState } from '@/components/primitives/ScreenState';
 import {
   useFavoritesStore,
-  selectFavorites,
+  useFavoriteIds,
   selectIsFavoritesHydrated,
 } from '@/store/favorites-store';
+import { fetchListingById } from '@/lib/api/catalogue';
+import { getCatalogueCache } from '@/lib/storage/catalogue-cache';
+import { queryClient } from '@/lib/query-client';
 import { formatVND } from '@/lib/currency';
+import { ListingItem } from '@/types/listing';
 import { ScreenViewState } from '@/types/domain';
+
+export type FavoriteListingStatus = 'available' | 'out_of_stock' | 'deleted';
+
+export interface DerivedFavoriteItem {
+  id: string;
+  item: ListingItem | null;
+  status: FavoriteListingStatus;
+}
 
 export default function FavoritesScreen() {
   const router = useRouter();
   const theme = useTheme();
 
-  const favorites = useFavoritesStore(selectFavorites);
+  // Fine-grained client Zustand store (minimal state: only favoriteIds)
+  const favoriteIds = useFavoriteIds();
   const isHydrated = useFavoritesStore(selectIsFavoritesHydrated);
   const removeFavorite = useFavoritesStore((state) => state.removeFavorite);
   const hydrateFavorites = useFavoritesStore((state) => state.hydrateFavorites);
 
+  // Demo review state switcher for examiners
+  const [demoStateOverride, setDemoStateOverride] = useState<ScreenViewState | null>(null);
+
+  // Restore favorites on mount
   useEffect(() => {
     if (!isHydrated) {
       void hydrateFavorites();
     }
   }, [isHydrated, hydrateFavorites]);
 
-  const viewState: ScreenViewState = !isHydrated
-    ? 'loading'
-    : favorites.length === 0
-    ? 'empty'
-    : 'content';
+  /**
+   * Safe derivation & querying of listing details for favoriteIds.
+   * Resolves from:
+   * 1. TanStack Query cache (`queryClient.getQueryData(['listing', id])`)
+   * 2. Local catalogue persistence cache (`getCatalogueCache()`)
+   * 3. Remote API / mock catalogue data (`fetchListingById(id)`)
+   * 4. Gracefully detects and handles deleted or out-of-stock listings.
+   */
+  const {
+    data: derivedFavorites = [],
+    isLoading,
+    isError,
+    error,
+    refetch,
+    isRefetching,
+  } = useQuery<DerivedFavoriteItem[]>({
+    queryKey: ['favorites', 'details', favoriteIds],
+    queryFn: async (): Promise<DerivedFavoriteItem[]> => {
+      if (favoriteIds.length === 0) return [];
 
+      const resolved = await Promise.all(
+        favoriteIds.map(async (id): Promise<DerivedFavoriteItem> => {
+          try {
+            // 1. Check TanStack Query cache first
+            const queryDetail = queryClient.getQueryData<ListingItem>(['listing', id]);
+            if (queryDetail) {
+              const isAvail = (queryDetail.stock ?? 1) > 0;
+              return {
+                id,
+                item: queryDetail,
+                status: isAvail ? 'available' : 'out_of_stock',
+              };
+            }
+
+            // 2. Check local catalogue cache
+            const catalogueCache = await getCatalogueCache();
+            const cachedItem = catalogueCache?.items.find((x) => x.id === id);
+            if (cachedItem) {
+              const isAvail = (cachedItem.stock ?? 1) > 0;
+              return {
+                id,
+                item: cachedItem,
+                status: isAvail ? 'available' : 'out_of_stock',
+              };
+            }
+
+            // 3. Fetch from remote API or mock data
+            const fetched = await fetchListingById(id);
+            if (fetched) {
+              const isAvail = (fetched.stock ?? 1) > 0;
+              return {
+                id,
+                item: fetched,
+                status: isAvail ? 'available' : 'out_of_stock',
+              };
+            }
+
+            // Item not found on server/cache -> deleted
+            return {
+              id,
+              item: null,
+              status: 'deleted',
+            };
+          } catch {
+            // Graceful error isolation per-item
+            return {
+              id,
+              item: null,
+              status: 'deleted',
+            };
+          }
+        })
+      );
+
+      return resolved;
+    },
+    enabled: isHydrated && favoriteIds.length > 0,
+  });
+
+  // 4-State evaluation
+  const viewState: ScreenViewState = (() => {
+    if (demoStateOverride) return demoStateOverride;
+    if (!isHydrated || (favoriteIds.length > 0 && isLoading && derivedFavorites.length === 0)) {
+      return 'loading';
+    }
+    if (isError) {
+      return 'error';
+    }
+    if (favoriteIds.length === 0 || (derivedFavorites.length === 0 && !isLoading)) {
+      return 'empty';
+    }
+    return 'content';
+  })();
+
+  const handleCardPress = (entry: DerivedFavoriteItem) => {
+    if (entry.status === 'deleted' || !entry.item) {
+      Alert.alert(
+        'Sản phẩm không khả dụng',
+        'Món đồ này đã bị người bán gỡ hoặc xoá khỏi sàn giao dịch. Bạn có thể bấm "Bỏ lưu" để dọn dẹp danh sách yêu thích.'
+      );
+      return;
+    }
+    router.push(`/(app)/listing/${entry.item.id}`);
+  };
+
+  const handleRemove = async (id: string) => {
+    await removeFavorite(id);
+  };
+
+  // Styles strictly conforming to WCAG AA and theme tokens
   const containerStyle: ViewStyle = {
     flex: 1,
     backgroundColor: theme.colors.background,
@@ -51,6 +184,36 @@ export default function FavoritesScreen() {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  };
+
+  const imageThumbContainerStyle: ViewStyle = {
+    width: 64,
+    height: 64,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.colors.surfaceSubtle,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: theme.spacing.md,
+    borderWidth: 1,
+    borderColor: theme.colors.borderSubtle,
+  };
+
+  const imageThumbStyle: ImageStyle = {
+    width: '100%',
+    height: '100%',
+  };
+
+  const infoColStyle: ViewStyle = {
+    flex: 1,
+    marginRight: theme.spacing.sm,
+  };
+
+  const badgeRowStyle: ViewStyle = {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: theme.spacing.xxs,
+    gap: theme.spacing.xs,
   };
 
   const itemTitleStyle: TextStyle = {
@@ -73,7 +236,7 @@ export default function FavoritesScreen() {
   };
 
   const removeBtnStyle: ViewStyle = {
-    minHeight: theme.layout.minTouchTarget,
+    minHeight: theme.layout.minTouchTarget, // Mandatory >= 44x44
     minWidth: theme.layout.minTouchTarget,
     paddingHorizontal: theme.spacing.sm,
     borderRadius: theme.radius.md,
@@ -92,39 +255,156 @@ export default function FavoritesScreen() {
     <View style={containerStyle}>
       <ScreenState
         state={viewState}
+        showStateSwitcher={true}
+        onStateChange={setDemoStateOverride}
         loadingMessage="Đang tải danh sách đồ dùng đã lưu..."
         emptyTitle="Chưa có sản phẩm yêu thích"
         emptyMessage="Bạn chưa lưu tin đăng nào. Hãy dạo quanh mục Sản phẩm để tìm món đồ phù hợp."
         emptyActionLabel="Khám phá chợ ngay"
         onEmptyAction={() => router.push('/(app)/(tabs)/')}
+        errorTitle="Không thể tải danh sách yêu thích"
+        errorMessage={
+          (error as { message?: string })?.message ||
+          'Đã xảy ra sự cố khi tải dữ liệu từ máy chủ. Vui lòng thử lại.'
+        }
+        onRetry={() => {
+          void refetch();
+        }}
       >
         <FlatList
-          data={favorites}
-          keyExtractor={(item) => item.id}
+          data={derivedFavorites}
+          keyExtractor={(entry) => entry.id}
           contentContainerStyle={listContentStyle}
-          renderItem={({ item }) => (
-            <View style={cardStyle}>
-              <TouchableOpacity
-                accessibilityRole="button"
-                accessibilityLabel={`Xem chi tiết sản phẩm yêu thích: ${item.title}`}
-                style={{ flex: 1, marginRight: theme.spacing.sm }}
-                onPress={() => router.push(`/(app)/listing/${item.id}`)}
-              >
-                <Text style={itemTitleStyle}>{item.title}</Text>
-                <Text style={priceTextStyle}>{formatVND(item.priceVnd)}</Text>
-                <Text style={locationTextStyle}>📍 {item.campusLocation}</Text>
-              </TouchableOpacity>
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefetching}
+              onRefresh={() => {
+                void refetch();
+              }}
+              tintColor={theme.colors.primary}
+            />
+          }
+          renderItem={({ item: entry }) => {
+            const isDeleted = entry.status === 'deleted' || !entry.item;
+            const isOutOfStock = entry.status === 'out_of_stock';
+            const item = entry.item;
+            const photoUrl = item?.photoUri || item?.imageUrl;
+            const title = item ? item.title : `Sản phẩm mã ${entry.id} (Đã bị gỡ)`;
 
-              <TouchableOpacity
-                accessibilityRole="button"
-                accessibilityLabel={`Bỏ thích sản phẩm ${item.title}`}
-                style={removeBtnStyle}
-                onPress={() => void removeFavorite(item.id)}
-              >
-                <Text style={removeBtnTextStyle}>Bỏ lưu</Text>
-              </TouchableOpacity>
-            </View>
-          )}
+            // Status Badge configuration
+            const badgeBg = isDeleted
+              ? theme.colors.surfaceSubtle
+              : isOutOfStock
+              ? theme.colors.dangerBgMuted
+              : theme.colors.successBgMuted;
+
+            const badgeTextColor = isDeleted
+              ? theme.colors.mutedText
+              : isOutOfStock
+              ? theme.colors.danger
+              : theme.colors.success;
+
+            const badgeText = isDeleted
+              ? 'Đã bị xoá'
+              : isOutOfStock
+              ? 'Hết hàng'
+              : 'Còn hàng';
+
+            return (
+              <View style={cardStyle}>
+                {/* Product Thumbnail */}
+                <View style={imageThumbContainerStyle}>
+                  {photoUrl ? (
+                    <Image
+                      source={{ uri: photoUrl }}
+                      style={imageThumbStyle}
+                      resizeMode="cover"
+                      accessibilityLabel={`Ảnh sản phẩm: ${title}`}
+                    />
+                  ) : (
+                    <Text style={{ fontSize: 24 }}>{isDeleted ? '🗑️' : '📦'}</Text>
+                  )}
+                </View>
+
+                {/* Listing Details */}
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    isDeleted
+                      ? `Sản phẩm đã bị gỡ mã ${entry.id}`
+                      : `Xem chi tiết sản phẩm yêu thích: ${title}`
+                  }
+                  style={infoColStyle}
+                  onPress={() => handleCardPress(entry)}
+                  activeOpacity={isDeleted ? 1 : 0.7}
+                >
+                  <View style={badgeRowStyle}>
+                    <View
+                      style={{
+                        backgroundColor: badgeBg,
+                        paddingHorizontal: theme.spacing.xs,
+                        paddingVertical: theme.spacing.xxs,
+                        borderRadius: theme.radius.xs,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: theme.typography.fontSizes.xs,
+                          color: badgeTextColor,
+                          fontWeight: theme.typography.fontWeights.semibold,
+                        }}
+                      >
+                        {badgeText}
+                      </Text>
+                    </View>
+                    {item?.category ? (
+                      <Text
+                        style={{
+                          fontSize: theme.typography.fontSizes.xs,
+                          color: theme.colors.mutedText,
+                        }}
+                      >
+                        {item.category}
+                      </Text>
+                    ) : null}
+                  </View>
+
+                  <Text style={itemTitleStyle} numberOfLines={2}>
+                    {title}
+                  </Text>
+
+                  {item ? (
+                    <Text style={priceTextStyle}>{formatVND(item.priceVnd)}</Text>
+                  ) : (
+                    <Text
+                      style={{
+                        fontSize: theme.typography.fontSizes.xs,
+                        color: theme.colors.mutedText,
+                        marginBottom: theme.spacing.xxs,
+                      }}
+                    >
+                      Không còn khả dụng trên chợ sinh viên
+                    </Text>
+                  )}
+
+                  {item?.campusLocation ? (
+                    <Text style={locationTextStyle}>📍 {item.campusLocation}</Text>
+                  ) : null}
+                </TouchableOpacity>
+
+                {/* Remove Favorite Button (Touch target >= 44x44) */}
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel={`Bỏ thích sản phẩm ${title}`}
+                  style={removeBtnStyle}
+                  onPress={() => void handleRemove(entry.id)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={removeBtnTextStyle}>Bỏ lưu</Text>
+                </TouchableOpacity>
+              </View>
+            );
+          }}
         />
       </ScreenState>
     </View>
