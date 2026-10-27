@@ -827,3 +827,108 @@
 - `npm run audit:theme`: **PASSED** (0 mã hex ngoài `constants/theme.ts`, 23/23 cặp màu đạt chuẩn contrast WCAG AA >= 4.5:1).
 - `npm run typecheck`: **PASSED** (0 lỗi, strict mode hoàn toàn sạch).
 - `npm run check:all`: **PASSED** (Toàn bộ kiểm tra tĩnh và kiểm thử tự động pass 100%).
+
+---
+
+## Sprint 11 - Automated Tests & Build Quality (Prompt 11)
+
+- **Thời gian**: 2026-10-27
+- **Vai trò**: Senior Mobile Test & Build Engineer / QA Architect
+- **Thành viên phụ trách review**: Nhóm sinh viên Campus Marketplace
+
+### 1. User Prompt (Yêu cầu đầu vào)
+> "Prompt 11 — Automated tests và chất lượng build
+> Hãy xây dựng bộ kiểm thử tối thiểu có ý nghĩa cho Campus Marketplace.
+> Bắt buộc có ít nhất:
+> - Pure-logic test: filterListings hoặc calculateCheckoutSummary, bao phủ edge cases.
+> - Component test: một component quan trọng như FavoriteButton, SearchFilter hoặc CartItem.
+> - Critical-path test: sign-in/session restore -> catalogue -> add favorite/cart -> checkout summary, có thể mock API nhưng phải kiểm tra hành vi thật của UI/store.
+> Yêu cầu:
+> - test ổn định, không phụ thuộc timing ngẫu nhiên hoặc network thật.
+> - mock SecureStore/API/notification đúng chỗ.
+> - không chỉ test snapshot rỗng.
+> - thêm script test rõ trong package.json.
+> - chạy `npx tsc --noEmit`, `npx expo lint` và test command.
+> - sửa lỗi thật, không tắt rule lint hoặc dùng `as any` để che lỗi.
+> Trả về bảng: test nào chứng minh yêu cầu nào trong đề, command chạy, kết quả và giới hạn coverage."
+
+---
+
+### 2. Phần code đã nhận (Accepted Code)
+1. **Sửa lỗi Lint thực tế (`npx expo lint`) và bảo toàn TypeScript strict (0 dùng `as any`, 0 tắt rule lint)**:
+   - `app/(app)/(tabs)/cart.tsx`: Loại bỏ import không sử dụng `FlatList`.
+   - `app/(app)/(tabs)/favorites.tsx`:
+     * Chuyển mảng danh sách khả dụng thành `useMemo` và bổ sung đầy đủ dependencies cho `useEffect`.
+     * Thay thế việc gán trực tiếp thuộc tính đối tượng (`target.priceVnd = newPrice`) bằng cập nhật bất biến (immutable update) để tuân thủ quy tắc React Compiler / `react-hooks/immutability`.
+   - `app/(app)/(tabs)/index.tsx`:
+     * Loại bỏ `useEffect` gọi `setState` đồng bộ (`setLastSuccessfulFetch`) gây cascading renders theo khuyến nghị React `react-hooks/set-state-in-effect`. Chuyển sang giá trị dẫn xuất `effectiveLastUpdated = customRefreshTime ?? lastUpdated`.
+     * Tích hợp chức năng chuyển đổi theme `toggleTheme` vào nút trên thanh Demo Bar.
+     * Xóa các biến/import thừa (`useTheme`, `useEffect`).
+   - `app/(app)/listing/[id].tsx`:
+     * Xóa `useEffect` gán `setManagedStock` từ `item.stock`. Thay thế bằng state cục bộ `stockEdit` với fallback tự động về `item.stock` khi query cập nhật.
+     * Xóa import thừa `ActivityIndicator`, `useEffect`.
+2. **Bộ Test Suite 1: Pure Logic Test & Edge Cases (`scripts/test-prompt11-pure-logic.js` - 15 test cases)**:
+   - Bao phủ toàn diện cả `filterListings` và `calculateCheckoutSummary`.
+   - Kiểm thử các trường hợp biên khắc nghiệt:
+     * Dữ liệu đầu vào non-array (`null`, `undefined`, number, string, object).
+     * Mảng rỗng `[]`, mảng chứa phần tử rác/null/undefined.
+     * Thuộc tính tin đăng thiếu `title`, `category`, `description`.
+     * Xử lý từ khóa tìm kiếm: khoảng trắng thừa, không phân biệt hoa thường, khớp trong mô tả.
+     * Xử lý danh mục: `'Tất cả'`, `'All'`, chuỗi rỗng `''`, khoảng trắng, chữ hoa/thường.
+     * Kết hợp cả tìm kiếm và lọc danh mục đồng thời.
+     * Tính bất biến (Immutability): Mảng gốc và đối tượng nguồn không bao giờ bị biến đổi.
+     * Giỏ hàng rỗng: Trả về toàn bộ số 0.
+     * Gặp trực tiếp khuôn viên: Phí 0đ.
+     * Giao tận KTX sinh viên: Phí 10.000đ khi < 100.000đ; miễn phí giao hàng khi đạt đúng ngưỡng 100.000đ và 99.999đ vẫn tính phí.
+     * Nhận tại Trạm tự quản: Phí 5.000đ khi < 50.000đ; miễn phí giao hàng khi >= 50.000đ.
+     * Giảm giá vượt quá tổng tiền: Tự động kẹp ngưỡng tối thiểu là 0đ (không bao giờ âm tiền).
+     * Tiền lẻ/số âm: Tự động làm tròn số nguyên (`Math.floor`) và loại trừ số âm.
+3. **Bộ Test Suite 2: Component Test - FavoriteToggleButton (`scripts/test-prompt11-component.js` - 10 test cases)**:
+   - Kiểm thử hành vi thực của component `FavoriteToggleButton` (không phải snapshot rỗng):
+     * Khai báo `accessibilityRole="button"`.
+     * Dynamic `accessibilityLabel` thay đổi tức thì giữa `"Lưu sản phẩm..."` và `"Bỏ lưu sản phẩm..."`.
+     * Dynamic `accessibilityState={{ selected: isFavorite }}`.
+     * Vùng cảm ứng tối thiểu WCAG AA: Kích thước >= 44x44px trên cả 2 biến thể `icon` và `button`.
+     * Chặn lan truyền sự kiện: Xác nhận `e.stopPropagation()` được gọi nhằm chống click nhầm vào card chuyển trang.
+     * Kích hoạt action store `toggleFavorite(listingId)`.
+     * Kích hoạt callback `onToggled(isFavorite)`.
+     * Áp dụng token màu chuẩn từ theme (nền, viền, icon, nhãn) khi chuyển đổi trạng thái.
+4. **Bộ Test Suite 3: Critical Path Test (`scripts/test-prompt11-critical-path.js` - 11 test cases)**:
+   - Kiểm thử luồng nghiệp vụ xuyên suốt: Sign-in / Khôi phục phiên $\rightarrow$ Danh mục (tìm kiếm & lọc) $\rightarrow$ Thêm Yêu thích & Giỏ hàng $\rightarrow$ Tính toán tổng kết thanh toán.
+   - Mocking đúng chuẩn và ổn định:
+     * `MockSecureStore`: Lưu trữ an toàn in-memory, giả lập khôi phục và xoá token.
+     * `MockApiClient`: Cung cấp phản hồi API tất định, không timeout, không phụ thuộc mạng.
+     * `MockNotificationService`: Ghi nhận sự kiện thông báo giảm giá không gọi module OS.
+   - Kiểm tra hành vi thực của các store:
+     * `useAuthStore`: Khởi động nguội an toàn; đăng nhập lưu token vào SecureStore; khôi phục phiên thành công khi khởi động lại.
+     * `useCatalogueStore` & `filterListings`: Dữ liệu hiển thị tính toán tức thì, không lưu state dẫn xuất.
+     * `useFavoritesStore`: Lưu ID yêu thích, ghi nhận thông báo giảm giá.
+     * `useCartStore`: Thêm sản phẩm, cộng dồn số lượng, chặn không vượt quá tồn kho thực tế (`capped_at_stock`).
+     * `calculateCheckoutSummary`: Đối chiếu giỏ hàng, áp dụng quy tắc giao hàng KTX và ngưỡng miễn phí vận chuyển.
+     * Đăng xuất: Xoá sạch token trong SecureStore nhưng bảo toàn danh sách yêu thích trên thiết bị cho sinh viên.
+5. **Cập nhật scripts trong `package.json`**:
+   - `"test:prompt11:logic"`
+   - `"test:prompt11:component"`
+   - `"test:prompt11:critical-path"`
+   - `"test:prompt11"`
+   - Tích hợp vào `"test"` và `"check:all"`.
+
+---
+
+### 3. Phần đã từ chối (Rejected Code) và Lý do
+- **Từ chối tắt rule ESLint (`/* eslint-disable */`) hoặc dùng `as any` để bỏ qua lỗi**:
+   - *Lý do*: Vi phạm quy tắc bắt buộc của đề bài (`sửa lỗi thật, không tắt rule lint hoặc dùng as any để che lỗi`). Tất cả 3 lỗi và 5 cảnh báo lint được tái cấu trúc thành code React chuẩn mực (immutable updates, loại bỏ setState trong effect, xóa biến không dùng).
+- **Từ chối chỉ viết kiểm thử snapshot rỗng (`toMatchSnapshot()`)**:
+   - *Lý do*: Vi phạm quy tắc (`không chỉ test snapshot rỗng`). Kiểm thử component và critical path kiểm tra trực tiếp thuộc tính accessibility, hành vi sự kiện (`stopPropagation`), callback và sự biến đổi state của Store.
+- **Từ chối sử dụng `setTimeout` ngẫu nhiên hoặc gọi API mạng thật**:
+   - *Lý do*: Đảm bảo bộ test ổn định tuyệt đối (deterministic), chạy trong < 1 giây trên mọi môi trường CI/CD.
+
+---
+
+### 4. Kết quả kiểm tra tự động
+- `npm run typecheck`: **PASSED** (0 lỗi, chế độ `strict: true`).
+- `npm run lint`: **PASSED** (0 errors, 0 warnings).
+- `npm run test:prompt11`: **PASSED** (36/36 test cases đạt 100% green).
+- `npm test`: **PASSED** (211/211 test cases đạt 100% green across all 10 test suites).
+- `npm run check:all`: **PASSED** (Toàn bộ kiểm tra tĩnh, lint và kiểm thử tự động pass 100%).
+

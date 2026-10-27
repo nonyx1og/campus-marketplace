@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,6 @@ import {
   ViewStyle,
   TextStyle,
   ImageStyle,
-  ActivityIndicator,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -39,11 +38,6 @@ export default function ListingDetailScreen() {
   const [rolePreviewMode, setRolePreviewMode] = useState<RolePreviewMode>('auto');
   const [imageError, setImageError] = useState(false);
 
-  // Seller stock management state
-  const [managedStock, setManagedStock] = useState<number>(0);
-  const [isUpdatingStock, setIsUpdatingStock] = useState(false);
-  const [stockFeedback, setStockFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-
   // Store hooks
   const addToCart = useCartStore((state) => state.addToCart);
   const toggleFavorite = useFavoritesStore((state) => state.toggleFavorite);
@@ -65,12 +59,17 @@ export default function ListingDetailScreen() {
     enabled: Boolean(id),
   });
 
-  // Sync managedStock when item data is loaded
-  useEffect(() => {
-    if (item && typeof item.stock === 'number') {
-      setManagedStock(item.stock);
-    }
-  }, [item]);
+  // Seller stock management state: tracks local pending edits without setState in effect
+  const [stockEdit, setStockEdit] = useState<number | null>(null);
+  const managedStock = stockEdit ?? (typeof item?.stock === 'number' ? item.stock : 0);
+  const setManagedStock = (valueOrUpdater: number | ((prev: number) => number)) => {
+    setStockEdit((prev) => {
+      const current = prev ?? (typeof item?.stock === 'number' ? item.stock : 0);
+      return typeof valueOrUpdater === 'function' ? valueOrUpdater(current) : valueOrUpdater;
+    });
+  };
+  const [isUpdatingStock, setIsUpdatingStock] = useState(false);
+  const [stockFeedback, setStockFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Determine current 4-state view
   const currentViewState: ScreenViewState = (() => {

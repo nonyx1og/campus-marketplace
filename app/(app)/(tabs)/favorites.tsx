@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -152,16 +152,17 @@ export default function FavoritesScreen() {
   })();
 
   // Extract available listings for price drop tracking
-  const availableListings = derivedFavorites
-    .map((d) => d.item)
-    .filter((x): x is ListingItem => x !== null);
+  const availableListings = useMemo(
+    () => derivedFavorites.map((d) => d.item).filter((x): x is ListingItem => x !== null),
+    [derivedFavorites]
+  );
 
   // Background price check when favorites data arrives
   useEffect(() => {
     if (availableListings.length > 0) {
       void checkAndNotifyFavoritePriceChanges(favoriteIds, availableListings);
     }
-  }, [availableListings.length, favoriteIds]);
+  }, [availableListings, favoriteIds]);
 
   const handleSimulatedPriceDrop = async () => {
     if (availableListings.length === 0) {
@@ -173,12 +174,16 @@ export default function FavoritesScreen() {
     const currentPrice = target.priceVnd;
     const newPrice = Math.max(10000, currentPrice - 20000);
 
-    // Apply simulated discount
-    target.priceVnd = newPrice;
-    target.priceMinor = newPrice;
+    // Apply simulated discount immutably
+    const updatedTarget: ListingItem = {
+      ...target,
+      priceVnd: newPrice,
+      priceMinor: newPrice,
+    };
+    const updatedListings = [updatedTarget, ...availableListings.slice(1)];
 
     // Trigger price change evaluation
-    const notifs = await checkAndNotifyFavoritePriceChanges(favoriteIds, availableListings);
+    const notifs = await checkAndNotifyFavoritePriceChanges(favoriteIds, updatedListings);
     await refetch();
     if (notifs.length > 0) {
       Alert.alert(

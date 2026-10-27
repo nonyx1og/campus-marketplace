@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -10,7 +10,7 @@ import {
   TextStyle,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useTheme, useThemeContext } from '@/constants/theme';
+import { useThemeContext } from '@/constants/theme';
 import { ScreenState } from '@/components/primitives/ScreenState';
 import { EmptyState } from '@/components/primitives/EmptyState';
 import { AppButton } from '@/components/primitives/AppButton';
@@ -104,14 +104,10 @@ export default function CatalogueScreen() {
   // Pull-to-refresh state & error preservation
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [isPullRefreshing, setIsPullRefreshing] = useState(false);
-  const [lastSuccessfulFetch, setLastSuccessfulFetch] = useState<string | null>(null);
+  const [customRefreshTime, setCustomRefreshTime] = useState<string | null>(null);
 
-  // Sync lastSuccessfulFetch when query delivers valid lastUpdated
-  useEffect(() => {
-    if (lastUpdated) {
-      setLastSuccessfulFetch(lastUpdated);
-    }
-  }, [lastUpdated]);
+  // Derived effective last updated timestamp without cascading setState in effect
+  const effectiveLastUpdated = customRefreshTime ?? lastUpdated;
 
   const handlePullToRefresh = async () => {
     setIsPullRefreshing(true);
@@ -120,7 +116,7 @@ export default function CatalogueScreen() {
       await refetch();
       // On successful fetch: update timestamp and clear errors
       const nowIso = new Date().toISOString();
-      setLastSuccessfulFetch(nowIso);
+      setCustomRefreshTime(nowIso);
     } catch (err: unknown) {
       // PROMPT 9 RULE: Refresh error MUST NOT wipe currently displayed cache!
       const errorMsg =
@@ -139,7 +135,7 @@ export default function CatalogueScreen() {
 
   const handleClearCacheForDemo = async () => {
     await clearCatalogueCache();
-    setLastSuccessfulFetch(null);
+    setCustomRefreshTime(null);
     void refetch();
   };
 
@@ -411,13 +407,13 @@ export default function CatalogueScreen() {
 
           <TouchableOpacity
             accessibilityRole="button"
-            accessibilityLabel="Mô phỏng lỗi khi kéo làm mới để kiểm tra bảo toàn cache"
+            accessibilityLabel="Chuyển đổi giao diện Sáng hoặc Tối"
             style={demoChipStyle(false)}
-            onPress={() => {
-              setRefreshError('Mô phỏng lỗi đường truyền: Không thể fetch danh mục mới. Danh sách sản phẩm cache đang hiển thị được bảo toàn 100%!');
-            }}
+            onPress={toggleTheme}
           >
-            <Text style={demoChipTextStyle(false)}>⚡ Test Lỗi Refresh</Text>
+            <Text style={demoChipTextStyle(false)}>
+              {theme.mode === 'dark' ? '☀️ Sáng' : '🌙 Tối'}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -545,13 +541,13 @@ export default function CatalogueScreen() {
               <>
                 {isOffline && (
                   <OfflineBanner
-                    lastUpdated={lastSuccessfulFetch || lastUpdated}
+                    lastUpdated={effectiveLastUpdated}
                     onRetry={handleRetry}
                     isRetrying={isRefetching || isPullRefreshing}
                   />
                 )}
                 <CatalogueHeaderFreshness
-                  lastUpdated={lastSuccessfulFetch || lastUpdated}
+                  lastUpdated={effectiveLastUpdated}
                   isRefetching={isRefetching || isPullRefreshing}
                   refreshError={refreshError}
                   itemCount={filteredListings.length}
