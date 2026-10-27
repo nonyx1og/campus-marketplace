@@ -1,8 +1,11 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Tokens } from '@/constants/tokens';
+import { useCartTotalCount } from '@/store/cart-store';
 
 export default function TabLayout() {
+  const totalCartCount = useCartTotalCount();
+
   return (
     <Tabs
       screenOptions={{
@@ -67,7 +70,14 @@ export default function TabLayout() {
         options={{
           title: 'Giỏ hàng',
           tabBarLabel: 'Giỏ hàng',
-          tabBarAccessibilityLabel: 'Tab giỏ hàng sinh viên',
+          tabBarBadge: totalCartCount > 0 ? totalCartCount : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: Tokens.colors.error,
+            color: Tokens.colors.textInverse,
+            fontSize: 10,
+            fontWeight: Tokens.typography.fontWeights.bold,
+          },
+          tabBarAccessibilityLabel: `Tab giỏ hàng sinh viên, hiện có ${totalCartCount} sản phẩm`,
           tabBarIcon: ({ color, size }) => (
             <Ionicons
               name="cart-outline"
@@ -80,3 +90,4 @@ export default function TabLayout() {
     </Tabs>
   );
 }
+

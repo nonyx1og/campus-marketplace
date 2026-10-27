@@ -4,6 +4,7 @@ import {
   Text,
   TouchableOpacity,
   Alert,
+  Platform,
   ViewStyle,
   TextStyle,
   ImageStyle,
@@ -160,24 +161,45 @@ export default function CartScreen() {
   // Handlers for quantity adjustments with stock rules
   const handleIncrement = async (item: EnrichedCartItem) => {
     if (item.availableStock <= 0) {
-      Alert.alert('Hết hàng', 'Sản phẩm này hiện đã hết hàng trong trường.');
+      if (Platform.OS === 'web') {
+        window.alert('Sản phẩm này hiện đã hết hàng trong trường.');
+      } else {
+        Alert.alert('Hết hàng', 'Sản phẩm này hiện đã hết hàng trong trường.');
+      }
       return;
     }
     if (item.quantity >= item.availableStock) {
-      Alert.alert(
-        'Đạt giới hạn tồn kho',
-        `Chỉ còn tối đa ${item.availableStock} sản phẩm sẵn có trong trường.`
-      );
+      if (Platform.OS === 'web') {
+        window.alert(`Chỉ còn tối đa ${item.availableStock} sản phẩm sẵn có trong trường.`);
+      } else {
+        Alert.alert(
+          'Đạt giới hạn tồn kho',
+          `Chỉ còn tối đa ${item.availableStock} sản phẩm sẵn có trong trường.`
+        );
+      }
       return;
     }
     const res = await incrementQuantity(item.listingId, item.availableStock);
     if (!res.success && res.message) {
-      Alert.alert('Thông báo', res.message);
+      if (Platform.OS === 'web') {
+        window.alert(res.message);
+      } else {
+        Alert.alert('Thông báo', res.message);
+      }
     }
   };
 
   const handleDecrement = async (item: EnrichedCartItem) => {
     if (item.quantity <= 1) {
+      if (Platform.OS === 'web') {
+        const confirmed = window.confirm(
+          `Bạn có chắc chắn muốn bỏ "${item.listing?.title || 'sản phẩm'}" khỏi giỏ hàng không?`
+        );
+        if (confirmed) {
+          void removeFromCart(item.listingId);
+        }
+        return;
+      }
       Alert.alert(
         'Xác nhận xóa',
         `Bạn có chắc chắn muốn bỏ "${item.listing?.title || 'sản phẩm'}" khỏi giỏ hàng không?`,
@@ -196,6 +218,15 @@ export default function CartScreen() {
   };
 
   const handleRemove = (item: EnrichedCartItem) => {
+    if (Platform.OS === 'web') {
+      const confirmed = window.confirm(
+        `Bỏ "${item.listing?.title || 'sản phẩm'}" khỏi giỏ hàng?`
+      );
+      if (confirmed) {
+        void removeFromCart(item.listingId);
+      }
+      return;
+    }
     Alert.alert(
       'Xóa sản phẩm',
       `Bỏ "${item.listing?.title || 'sản phẩm'}" khỏi giỏ hàng?`,
@@ -213,19 +244,26 @@ export default function CartScreen() {
   const handleAutoAdjust = async () => {
     const adjusted = autoAdjustCartItems(cartItems, freshListingsMap, true);
     await setCartItems(adjusted);
-    Alert.alert(
-      'Đã điều chỉnh giỏ hàng',
-      'Đã tự động cân bằng số lượng theo tồn kho thực tế và loại bỏ các sản phẩm không còn khả dụng.'
-    );
+    if (Platform.OS === 'web') {
+      window.alert('Đã tự động cân bằng số lượng theo tồn kho thực tế và loại bỏ các sản phẩm không còn khả dụng.');
+    } else {
+      Alert.alert(
+        'Đã điều chỉnh giỏ hàng',
+        'Đã tự động cân bằng số lượng theo tồn kho thực tế và loại bỏ các sản phẩm không còn khả dụng.'
+      );
+    }
   };
 
   const handleConfirmCheckout = () => {
     if (!validationResult.canCheckout) {
-      Alert.alert(
-        'Không thể đặt hẹn',
+      const msg =
         validationResult.errorSummary ||
-          'Vui lòng kiểm tra lại giỏ hàng trước khi xác nhận giao dịch.'
-      );
+        'Vui lòng kiểm tra lại giỏ hàng trước khi xác nhận giao dịch.';
+      if (Platform.OS === 'web') {
+        window.alert(msg);
+      } else {
+        Alert.alert('Không thể đặt hẹn', msg);
+      }
       return;
     }
 
@@ -233,11 +271,20 @@ export default function CartScreen() {
 
     setTimeout(() => {
       setIsSubmitting(false);
+      const successMsg = `Yêu cầu hẹn gặp nhận ${checkoutSummary.itemsCount} món đồ đã được gửi đến người bán trong trường.\n\n• Phương thức: ${currentDeliveryRule.name}\n• Tổng tiền thanh toán: ${formatVND(
+        checkoutSummary.totalMinor
+      )}\n\nVui lòng kiểm tra tin nhắn và chuẩn bị tiền mặt/chuyển khoản khi gặp trực tiếp!`;
+
+      if (Platform.OS === 'web') {
+        window.alert(`Hẹn giao dịch thành công!\n\n${successMsg}`);
+        void clearCart();
+        router.push('/(app)/(tabs)');
+        return;
+      }
+
       Alert.alert(
         'Hẹn giao dịch thành công!',
-        `Yêu cầu hẹn gặp nhận ${checkoutSummary.itemsCount} món đồ đã được gửi đến người bán trong trường.\n\n• Phương thức: ${currentDeliveryRule.name}\n• Tổng tiền thanh toán: ${formatVND(
-          checkoutSummary.totalMinor
-        )}\n\nVui lòng kiểm tra tin nhắn và chuẩn bị tiền mặt/chuyển khoản khi gặp trực tiếp!`,
+        successMsg,
         [
           {
             text: 'Đồng ý',

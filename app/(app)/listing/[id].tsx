@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  Platform,
   ViewStyle,
   TextStyle,
   ImageStyle,
@@ -99,23 +100,48 @@ export default function ListingDetailScreen() {
     typeof item?.stock === 'number' && Number.isFinite(item.stock) ? Math.max(0, item.stock) : 0;
   const isAvailable = Boolean(item) && stockCount > 0;
 
+  const [justAddedToCart, setJustAddedToCart] = useState(false);
+  const [cartToastMessage, setCartToastMessage] = useState<string | null>(null);
+
   // Buyer Action: Add to Cart
-  const handleAddToCart = () => {
+  const handleAddToCart = async () => {
     if (!item) return;
     if (!isAvailable) {
-      Alert.alert('Hết hàng', 'Sản phẩm này tạm thời đã hết số lượng tồn kho.');
+      if (Platform.OS === 'web') {
+        window.alert('Sản phẩm này tạm thời đã hết số lượng tồn kho.');
+      } else {
+        Alert.alert('Hết hàng', 'Sản phẩm này tạm thời đã hết số lượng tồn kho.');
+      }
       return;
     }
 
-    addToCart(item);
-    Alert.alert(
-      'Thành công',
-      `Đã thêm "${item.title}" vào giỏ hàng!`,
-      [
-        { text: 'Tiếp tục xem', style: 'cancel' },
-        { text: 'Xem giỏ hàng', onPress: () => router.push('/(app)/(tabs)/cart') },
-      ]
-    );
+    const res = await addToCart(item);
+    if (!res.success && res.message) {
+      if (Platform.OS === 'web') {
+        window.alert(res.message);
+      } else {
+        Alert.alert('Thông báo', res.message);
+      }
+      return;
+    }
+
+    setJustAddedToCart(true);
+    setCartToastMessage(`Đã thêm "${item.title}" vào giỏ hàng!`);
+    setTimeout(() => {
+      setJustAddedToCart(false);
+      setCartToastMessage(null);
+    }, 4000);
+
+    if (Platform.OS !== 'web') {
+      Alert.alert(
+        'Thành công',
+        `Đã thêm "${item.title}" vào giỏ hàng!`,
+        [
+          { text: 'Tiếp tục xem', style: 'cancel' },
+          { text: 'Xem giỏ hàng', onPress: () => router.push('/(app)/(tabs)/cart') },
+        ]
+      );
+    }
   };
 
   // Buyer Action: Toggle Favorite
@@ -773,12 +799,20 @@ export default function ListingDetailScreen() {
               <>
                 <View style={{ flex: 1 }}>
                   <AppButton
-                    title={isAvailable ? 'Thêm vào giỏ' : 'Hết hàng'}
-                    variant={isAvailable ? 'outline' : 'secondary'}
+                    title={
+                      justAddedToCart
+                        ? '✓ Đã thêm vào giỏ!'
+                        : isAvailable
+                        ? 'Thêm vào giỏ'
+                        : 'Hết hàng'
+                    }
+                    variant={justAddedToCart ? 'secondary' : isAvailable ? 'outline' : 'secondary'}
                     disabled={!isAvailable}
                     onPress={handleAddToCart}
                     accessibilityLabel={
-                      isAvailable
+                      justAddedToCart
+                        ? 'Đã thêm món đồ này vào giỏ hàng sinh viên'
+                        : isAvailable
                         ? 'Thêm món đồ này vào giỏ hàng sinh viên'
                         : 'Sản phẩm đã hết hàng, không thể thêm vào giỏ'
                     }
@@ -800,6 +834,70 @@ export default function ListingDetailScreen() {
                 </View>
               </>
             )}
+          </View>
+        )}
+
+        {/* Floating Cart Toast Banner for Immediate Cross-Platform Feedback */}
+        {cartToastMessage && (
+          <View
+            style={{
+              position: 'absolute',
+              bottom: 84,
+              left: theme.spacing.screenPadding,
+              right: theme.spacing.screenPadding,
+              backgroundColor: theme.colors.surface,
+              borderRadius: theme.radius.md,
+              borderWidth: 1.5,
+              borderColor: theme.colors.success,
+              padding: theme.spacing.md,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              shadowColor: theme.colors.text,
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.15,
+              shadowRadius: 8,
+              elevation: 6,
+              zIndex: 999,
+            }}
+          >
+            <View style={{ flex: 1, marginRight: theme.spacing.sm }}>
+              <Text
+                style={{
+                  fontSize: theme.typography.fontSizes.sm,
+                  fontWeight: theme.typography.fontWeights.semibold,
+                  color: theme.colors.text,
+                }}
+                numberOfLines={2}
+              >
+                ✓ {cartToastMessage}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => router.push('/(app)/(tabs)/cart')}
+              style={{
+                backgroundColor: theme.colors.primary,
+                paddingHorizontal: theme.spacing.md,
+                paddingVertical: theme.spacing.xs,
+                borderRadius: theme.radius.xs,
+                minHeight: theme.layout.minTouchTarget,
+                minWidth: theme.layout.minTouchTarget,
+                justifyContent: 'center',
+                alignItems: 'center',
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Đi tới xem giỏ hàng ngay"
+            >
+              <Text
+                style={{
+                  color: theme.colors.textInverse,
+                  fontSize: theme.typography.fontSizes.xs,
+                  fontWeight: theme.typography.fontWeights.bold,
+                }}
+              >
+                Xem giỏ →
+              </Text>
+            </TouchableOpacity>
           </View>
         )}
       </ScreenState>

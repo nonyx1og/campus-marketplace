@@ -7,12 +7,14 @@ import {
   ViewStyle,
   TextStyle,
   ImageStyle,
+  GestureResponderEvent,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '@/constants/theme';
 import { ListingItem } from '@/types/listing';
 import { formatVND } from '@/lib/currency';
 import { FavoriteToggleButton } from '@/components/favorites';
+import { useCartStore } from '@/store/cart-store';
 
 export interface CatalogueCardProps {
   item: ListingItem;
@@ -22,11 +24,21 @@ export const CatalogueCard: React.FC<CatalogueCardProps> = ({ item }) => {
   const router = useRouter();
   const theme = useTheme();
   const [imageError, setImageError] = useState(false);
+  const [justAdded, setJustAdded] = useState(false);
+  const addToCart = useCartStore((state) => state.addToCart);
 
   const isAvailable = (item.stock ?? 1) > 0;
   const stockText = isAvailable
     ? `Còn hàng: ${item.stock ?? 1}`
     : 'Hết hàng';
+
+  const handleQuickAddToCart = async (e: GestureResponderEvent) => {
+    e.stopPropagation();
+    if (!isAvailable) return;
+    await addToCart(item);
+    setJustAdded(true);
+    setTimeout(() => setJustAdded(false), 2000);
+  };
 
   const cardStyle: ViewStyle = {
     backgroundColor: theme.colors.surface,
@@ -135,6 +147,37 @@ export const CatalogueCard: React.FC<CatalogueCardProps> = ({ item }) => {
     color: theme.colors.mutedText,
   };
 
+  const quickAddBtnStyle: ViewStyle = {
+    minHeight: theme.layout.minTouchTarget,
+    minWidth: theme.layout.minTouchTarget,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xxs,
+    borderRadius: theme.radius.sm,
+    backgroundColor: justAdded
+      ? theme.colors.successBgMuted
+      : isAvailable
+      ? theme.colors.surfaceSubtle
+      : theme.colors.surfaceSubtle,
+    borderWidth: 1,
+    borderColor: justAdded
+      ? theme.colors.success
+      : isAvailable
+      ? theme.colors.primary
+      : theme.colors.borderSubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+  };
+
+  const quickAddTextStyle: TextStyle = {
+    fontSize: theme.typography.fontSizes.xs,
+    fontWeight: theme.typography.fontWeights.bold,
+    color: justAdded
+      ? theme.colors.success
+      : isAvailable
+      ? theme.colors.primary
+      : theme.colors.mutedText,
+  };
+
   const photoUrl = item.photoUri || item.imageUrl;
 
   return (
@@ -183,13 +226,33 @@ export const CatalogueCard: React.FC<CatalogueCardProps> = ({ item }) => {
         {item.description}
       </Text>
 
-      {/* Footer: Price & Campus Location */}
+      {/* Footer: Price, Campus Location & Quick Add Button */}
       <View style={footerRowStyle}>
-        <Text style={priceStyle}>{formatVND(item.priceVnd)}</Text>
-        <Text style={locationStyle}>📍 {item.campusLocation}</Text>
+        <View style={{ flex: 1, paddingRight: theme.spacing.xs }}>
+          <Text style={priceStyle}>{formatVND(item.priceVnd)}</Text>
+          <Text style={locationStyle}>📍 {item.campusLocation}</Text>
+        </View>
+
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel={
+            isAvailable
+              ? `Thêm nhanh ${item.title} vào giỏ hàng`
+              : `Sản phẩm ${item.title} đã hết hàng`
+          }
+          onPress={handleQuickAddToCart}
+          disabled={!isAvailable}
+          style={quickAddBtnStyle}
+          activeOpacity={0.7}
+        >
+          <Text style={quickAddTextStyle}>
+            {justAdded ? '✓ Đã thêm' : isAvailable ? '+ Giỏ' : 'Hết'}
+          </Text>
+        </TouchableOpacity>
       </View>
     </TouchableOpacity>
   );
 };
+
 
 export default CatalogueCard;
